@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
-use crate::SortOrderArg;
 use crate::config_file::ConfigFileArgs;
 use crate::environment::EnvironmentCreateArgs;
 use crate::json_filter::JsonOutput;
@@ -13,6 +12,7 @@ use crate::model::ModelArgs;
 use crate::scope::ObjectScope;
 use crate::share::ShareArgs;
 use crate::skill::SkillSpec;
+use crate::SortOrderArg;
 
 /// Output format for agent results.
 #[derive(Debug, Copy, Clone, ValueEnum, Eq, PartialEq, Default)]
@@ -283,11 +283,12 @@ pub struct RunAgentArgs {
     /// If a repo is specified, searches only that repo. If org is also specified,
     /// validates the repo's git remote matches the expected org.
     ///
-    /// When used with --prompt, the skill provides the base context and the prompt is the task.
+    /// When used with --prompt, the first skill provides the base context and the prompt is the task.
+    /// Repeat this flag to make additional skills available to the agent.
     ///
     /// To automate a skill on a schedule, use `oz schedule create --skill <SKILL>`.
     #[arg(long = "skill", value_name = "SKILL")]
-    pub skill: Option<SkillSpec>,
+    pub skill: Vec<SkillSpec>,
 
     /// Name for this agent task.
     #[arg(long = "name", short = 'n')]
@@ -388,6 +389,11 @@ impl RunAgentArgs {
         let mut specs = self.mcp_specs.clone();
         specs.extend(self.mcp_servers.iter().cloned().map(MCPSpec::Uuid));
         specs
+    }
+
+    /// Return the first `--skill` value, which is the skill invoked for this run.
+    pub fn invoked_skill(&self) -> Option<&SkillSpec> {
+        self.skill.first()
     }
 }
 
