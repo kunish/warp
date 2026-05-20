@@ -193,6 +193,7 @@ use crate::view_components::DismissibleToast;
 use crate::workspace::{ForkAIConversationParams, ForkedConversationDestination, WorkspaceAction};
 use crate::{report_error, report_if_error, ToastStack};
 use ai::agent::action::{AskUserQuestionItem, InsertReviewComment, RunAgentsRequest};
+use base64::Engine as _;
 
 use crate::editor::InteractionState;
 use crate::server::telemetry::{AutonomySettingToggleSource, InteractionSource};
@@ -5993,6 +5994,10 @@ pub enum AIBlockAction {
     ViewScreenshot {
         action_id: AIAgentActionId,
     },
+    /// Open the lightbox for an image attached to the submitted user query.
+    OpenSubmittedAttachmentLightbox {
+        image_index: usize,
+    },
     ToggleImportedCommentCollapsed {
         action_id: AIAgentActionId,
         comment_index: usize,
@@ -6645,6 +6650,66 @@ impl TypedActionView for AIBlock {
                     .iter()
                     .position(|id| *id == action_id)
                     .unwrap_or(0);
+
+                ctx.dispatch_typed_action(&WorkspaceAction::OpenLightbox {
+                    images,
+                    initial_index,
+                });
+            }
+            AIBlockAction::OpenSubmittedAttachmentLightbox { image_index } => {
+                let submitted_images = self
+                    .model
+                    .inputs_to_render(ctx)
+                    .iter()
+                    .filter_map(|input| input.context())
+                    .flat_map(|contexts| contexts.iter())
+                    .filter_map(|context| match context {
+                        AIAgentContext::Image(image) => Some(image.clone()),
+                        _ => None,
+                    })
+                    .collect_vec();
+                let mut images = Vec::new();
+                let mut initial_index = None;
+                for (submitted_image_index, image) in submitted_images.iter().enumerate() {
+                    let image_bytes =
+                        match base64::engine::general_purpose::STANDARD.decode(&image.data) {
+                            Ok(image_bytes) => image_bytes,
+                            Err(error) => {
+                                log::warn!(
+                                "Failed to decode submitted image attachment for lightbox: {error}"
+                            );
+                                continue;
+                            }
+                        };
+
+                    let asset_id = format!(
+                        "submitted-attachment-lightbox-{}-{submitted_image_index}",
+                        self.client_ids.client_exchange_id
+                    );
+                    AssetCache::handle(ctx).update(ctx, |asset_cache, ctx| {
+                        asset_cache.insert_raw_asset_bytes::<ImageType>(
+                            asset_id.clone(),
+                            &image_bytes,
+                            ctx,
+                        );
+                    });
+
+                    if submitted_image_index == *image_index {
+                        initial_index = Some(images.len());
+                    }
+                    images.push(ui_components::lightbox::LightboxImage {
+                        source: ui_components::lightbox::LightboxImageSource::Resolved {
+                            asset_source: warpui::assets::asset_cache::AssetSource::Raw {
+                                id: asset_id,
+                            },
+                        },
+                        description: Some(image.file_name.clone()),
+                    });
+                }
+
+                let Some(initial_index) = initial_index else {
+                    return;
+                };
 
                 ctx.dispatch_typed_action(&WorkspaceAction::OpenLightbox {
                     images,

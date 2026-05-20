@@ -5,8 +5,8 @@
 use warp_core::{features::FeatureFlag, ui::theme::color::internal_colors};
 use warpui::{
     elements::{
-        Container, CornerRadius, Flex, MainAxisAlignment, MainAxisSize, ParentElement, Radius,
-        Shrinkable, Wrap,
+        Container, CornerRadius, DispatchEventResult, EventHandler, Flex, MainAxisAlignment,
+        MainAxisSize, ParentElement, Radius, Shrinkable, Wrap,
     },
     fonts::{Properties, Style, Weight},
     ui_components::{
@@ -17,6 +17,7 @@ use warpui::{
 };
 
 use crate::ai::blocklist::block::view_impl::common::UserQueryProps;
+use crate::ai::blocklist::block::AIBlockAction;
 use crate::ai::blocklist::AttachmentType;
 use crate::appearance::Appearance;
 use crate::{
@@ -126,13 +127,13 @@ fn render_attachments(
     attachments: &[(AttachmentType, String)],
     appearance: &Appearance,
 ) -> Box<dyn Element> {
+    let mut image_index = 0;
     let chips = attachments.iter().map(|(attachment_type, file_name)| {
         let icon = match attachment_type {
             AttachmentType::Image => Icon::Image,
             AttachmentType::File => Icon::File,
         };
-
-        Chip::new(
+        let chip = Chip::new(
             file_name.clone(),
             UiComponentStyles {
                 margin: Some(Coords {
@@ -157,7 +158,22 @@ fn render_attachments(
             blended_colors::text_sub(appearance.theme(), appearance.theme().background()).into(),
         ))
         .build()
-        .finish()
+        .finish();
+
+        if matches!(attachment_type, AttachmentType::Image) {
+            let clicked_image_index = image_index;
+            image_index += 1;
+            EventHandler::new(chip)
+                .on_left_mouse_down(move |ctx, _, _| {
+                    ctx.dispatch_typed_action(AIBlockAction::OpenSubmittedAttachmentLightbox {
+                        image_index: clicked_image_index,
+                    });
+                    DispatchEventResult::StopPropagation
+                })
+                .finish()
+        } else {
+            chip
+        }
     });
 
     if attachments.is_empty() {

@@ -362,6 +362,10 @@ pub enum TerminalAction {
     DeleteAttachment {
         index: usize,
     },
+    /// Opens an attached image in the workspace lightbox.
+    OpenAttachmentLightbox {
+        index: usize,
+    },
     WriteCodebaseIndex,
     ToggleAutoexecuteMode,
     ToggleQueueNextPrompt,
@@ -682,6 +686,9 @@ impl fmt::Debug for TerminalAction {
             LoadAgentModeConversation => write!(f, "LoadAgentModeConversation"),
             ShowWarpifySettings => write!(f, "ShowWarpifySettings"),
             DeleteAttachment { index } => write!(f, "DeleteAttachment({index:?})"),
+            OpenAttachmentLightbox { index } => {
+                write!(f, "OpenAttachmentLightbox({index:?})")
+            }
             WriteCodebaseIndex => write!(f, "PersistCodebaseIndex"),
             ToggleAutoexecuteMode => write!(f, "ToggleAutoexecuteMode"),
             ToggleQueueNextPrompt => write!(f, "ToggleQueueNextPrompt"),
