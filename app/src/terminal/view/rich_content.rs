@@ -12,7 +12,9 @@ use crate::{
     terminal::{
         block_list_viewport::ScrollPositionUpdate,
         model::{
-            blocks::RichContentItem, rich_content::RichContentType, terminal_model::BlockIndex,
+            blocks::{RemovableBlocklistItem, RichContentItem},
+            rich_content::RichContentType,
+            terminal_model::BlockIndex,
         },
         ssh::{error::SshErrorBlock, install_tmux::SshInstallTmuxBlock, warpify::SshWarpifyBlock},
         view::{
@@ -39,6 +41,9 @@ pub enum RichContentInsertionPosition {
     },
     /// Insert before the block at the given index.
     BeforeBlockIndex(BlockIndex),
+    /// Insert after the rich content item with the given view ID, falling back to appending if it
+    /// is no longer present.
+    AfterRichContent(EntityId),
     /// Pin to the bottom of the blocklist. The BlockList will automatically
     /// keep this item at the end by reordering it after any subsequent insertions.
     /// Only one item can be pinned at a time.
@@ -354,6 +359,16 @@ impl TerminalView {
                     .lock()
                     .block_list_mut()
                     .insert_rich_content_before_block_index(item, block_index);
+            }
+            RichContentInsertionPosition::AfterRichContent(view_id) => {
+                let mut model = self.model.lock();
+                let inserted = model.block_list_mut().insert_rich_content_after_item(
+                    RemovableBlocklistItem::RichContent(view_id),
+                    item,
+                );
+                if !inserted {
+                    model.block_list_mut().append_rich_content(item, true);
+                }
             }
             RichContentInsertionPosition::PinToBottom => {
                 self.model

@@ -17,7 +17,6 @@ impl QueuedQueryId {
 }
 
 /// Where a queued prompt came from.
-/// The origin is informational for telemetry; FIFO ordering and firing semantics are uniform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueuedQueryOrigin {
     /// Filed while the initial Cloud Mode prompt waits to be handed off.
@@ -258,6 +257,9 @@ impl QueuedQueryModel {
         let (mut popped, first_in_edit_mode) = {
             let queue = self.queues.get_mut(&conversation_id)?;
             let first = queue.first()?;
+            if first.origin == QueuedQueryOrigin::InitialCloudMode {
+                return None;
+            }
 
             let first_in_edit_mode = self
                 .editing
@@ -297,6 +299,9 @@ impl QueuedQueryModel {
         let removed = {
             let queue = self.queues.get_mut(&conversation_id)?;
             let idx = queue.iter().position(|q| q.id == query_id)?;
+            if queue[idx].origin == QueuedQueryOrigin::InitialCloudMode {
+                return None;
+            }
             queue.remove(idx)
         };
         if self
@@ -310,6 +315,35 @@ impl QueuedQueryModel {
         ctx.emit(QueuedQueryEvent::Removed {
             conversation_id,
             query_id,
+        });
+        Some(removed)
+    }
+
+    /// Removes the locked initial Cloud Mode row, if it is still at the queue head.
+    pub fn remove_initial_cloud_mode_row(
+        &mut self,
+        conversation_id: AIConversationId,
+        ctx: &mut ModelContext<Self>,
+    ) -> Option<QueuedQuery> {
+        let removed = {
+            let queue = self.queues.get_mut(&conversation_id)?;
+            if !queue
+                .first()
+                .is_some_and(|row| row.origin == QueuedQueryOrigin::InitialCloudMode)
+            {
+                return None;
+            }
+            queue.remove(0)
+        };
+        if self.editing.as_ref().is_some_and(|editing| {
+            editing.conversation_id == conversation_id && editing.query_id == removed.id
+        }) {
+            self.editing = None;
+        }
+        self.clear_empty_queue_state(conversation_id);
+        ctx.emit(QueuedQueryEvent::Removed {
+            conversation_id,
+            query_id: removed.id,
         });
         Some(removed)
     }
@@ -354,6 +388,14 @@ impl QueuedQueryModel {
         let Some(source_idx) = queue.iter().position(|q| q.id == source_id) else {
             return;
         };
+        if queue[source_idx].origin == QueuedQueryOrigin::InitialCloudMode
+            || (target_index == 0
+                && queue
+                    .first()
+                    .is_some_and(|row| row.origin == QueuedQueryOrigin::InitialCloudMode))
+        {
+            return;
+        }
         let row = queue.remove(source_idx);
         let clamped = target_index.min(queue.len());
         queue.insert(clamped, row);
@@ -368,11 +410,12 @@ impl QueuedQueryModel {
         query_id: QueuedQueryId,
         ctx: &mut ModelContext<Self>,
     ) {
-        let row_exists = self
-            .queues
-            .get(&conversation_id)
-            .is_some_and(|q| q.iter().any(|r| r.id == query_id));
-        if !row_exists {
+        let row_is_editable = self.queues.get(&conversation_id).is_some_and(|queue| {
+            queue
+                .iter()
+                .any(|row| row.id == query_id && row.origin != QueuedQueryOrigin::InitialCloudMode)
+        });
+        if !row_is_editable {
             return;
         }
 

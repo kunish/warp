@@ -2957,6 +2957,8 @@ pub fn enabled_features() -> HashSet<FeatureFlag> {
         FeatureFlag::PendingUserQueryIndicator,
         #[cfg(feature = "queue_slash_command")]
         FeatureFlag::QueueSlashCommand,
+        #[cfg(feature = "queued_prompts_v2")]
+        FeatureFlag::QueuedPromptsV2,
         #[cfg(feature = "kitty_keyboard_protocol")]
         FeatureFlag::KittyKeyboardProtocol,
         #[cfg(feature = "inline_menu_headers")]
