@@ -6,6 +6,7 @@ use super::{
     SettingsSection, ToggleState,
 };
 use crate::appearance::Appearance;
+use crate::features::FeatureFlag;
 use crate::report_if_error;
 use crate::settings::{
     AllowInsideWarpControl, AllowInsideWarpReadOnly, AllowInsideWarpReadWrite,
@@ -137,9 +138,11 @@ pub struct ScriptingSettingsPageView {
 
 impl ScriptingSettingsPageView {
     pub fn new(ctx: &mut ViewContext<Self>) -> Self {
-        ctx.subscribe_to_model(&LocalControlSettings::handle(ctx), |_, _, _, ctx| {
-            ctx.notify();
-        });
+        if FeatureFlag::WarpControlCli.is_enabled() {
+            ctx.subscribe_to_model(&LocalControlSettings::handle(ctx), |_, _, _, ctx| {
+                ctx.notify();
+            });
+        }
 
         Self {
             page: PageType::new_uncategorized(
@@ -235,7 +238,7 @@ impl SettingsPageMeta for ScriptingSettingsPageView {
     }
 
     fn should_render(&self, _ctx: &AppContext) -> bool {
-        cfg!(not(target_family = "wasm"))
+        cfg!(not(target_family = "wasm")) && FeatureFlag::WarpControlCli.is_enabled()
     }
 
     fn update_filter(&mut self, query: &str, ctx: &mut ViewContext<Self>) -> MatchData {

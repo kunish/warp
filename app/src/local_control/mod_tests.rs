@@ -2,9 +2,31 @@ use ::local_control::protocol::{
     PaneSelector, PaneTarget, TabSelector, TabTarget, TargetSelector, WindowSelector, WindowTarget,
 };
 
-use super::{capabilities, preferred_window_id, validate_tab_create_target};
+use super::{
+    active_window_id, capabilities, outside_warp_action_enabled_for_settings,
+    validate_tab_create_target,
+};
+use crate::settings::{
+    AllowInsideWarpControl, AllowInsideWarpReadOnly, AllowInsideWarpReadWrite,
+    AllowOutsideWarpControl, AllowOutsideWarpReadOnly, AllowOutsideWarpReadWrite,
+    LocalControlSettings,
+};
 use ::local_control::protocol::ActionKind;
 use ::local_control::ErrorCode;
+use settings::Setting as _;
+fn settings_with_outside_warp(
+    outside_control: bool,
+    outside_read_write: bool,
+) -> LocalControlSettings {
+    LocalControlSettings {
+        allow_inside_warp_control: AllowInsideWarpControl::new(Some(true)),
+        allow_outside_warp_control: AllowOutsideWarpControl::new(Some(outside_control)),
+        allow_inside_warp_read_only: AllowInsideWarpReadOnly::new(Some(true)),
+        allow_outside_warp_read_only: AllowOutsideWarpReadOnly::new(Some(false)),
+        allow_inside_warp_read_write: AllowInsideWarpReadWrite::new(Some(true)),
+        allow_outside_warp_read_write: AllowOutsideWarpReadWrite::new(Some(outside_read_write)),
+    }
+}
 
 #[test]
 fn tab_create_accepts_default_and_active_targets() {
@@ -57,19 +79,29 @@ fn capabilities_only_advertises_tab_create() {
 }
 
 #[test]
-fn tab_create_prefers_active_window() {
-    let active = warpui::WindowId::from_usize(1);
-    let frontmost = warpui::WindowId::from_usize(2);
-
-    assert_eq!(
-        preferred_window_id(Some(active), Some(frontmost)),
-        Some(active)
-    );
+fn outside_warp_discovery_requires_context_and_action_permission() {
+    assert!(!outside_warp_action_enabled_for_settings(
+        &settings_with_outside_warp(false, true),
+        ActionKind::TabCreate
+    ));
+    assert!(!outside_warp_action_enabled_for_settings(
+        &settings_with_outside_warp(true, false),
+        ActionKind::TabCreate
+    ));
+    assert!(outside_warp_action_enabled_for_settings(
+        &settings_with_outside_warp(true, true),
+        ActionKind::TabCreate
+    ));
 }
 
 #[test]
-fn tab_create_falls_back_to_frontmost_window() {
-    let frontmost = warpui::WindowId::from_usize(2);
+fn tab_create_prefers_active_window() {
+    let active = warpui::WindowId::from_usize(1);
 
-    assert_eq!(preferred_window_id(None, Some(frontmost)), Some(frontmost));
+    assert_eq!(active_window_id(Some(active)), Some(active));
+}
+
+#[test]
+fn tab_create_rejects_missing_active_window() {
+    assert_eq!(active_window_id(None), None);
 }
