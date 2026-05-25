@@ -11,9 +11,9 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use clap_complete::aot::Shell;
 
 use commands::{
-    run_action_command, run_app_command, run_appearance_command, run_block_command,
-    run_history_command, run_input_command, run_instance_command, run_pane_command,
-    run_session_command, run_setting_command, run_tab_command, run_theme_command,
+    run_action_command, run_app_command, run_app_surface_command, run_appearance_command,
+    run_block_command, run_history_command, run_input_command, run_instance_command,
+    run_pane_command, run_session_command, run_setting_command, run_tab_command, run_theme_command,
     run_window_command,
 };
 use completions::generate_completions_to_stdout;
@@ -78,6 +78,10 @@ pub enum ControlCommand {
     /// Inspect the local-control action catalog.
     #[command(subcommand)]
     Action(ActionCommand),
+
+    /// Control app-level surfaces and focus.
+    #[command(subcommand)]
+    AppSurface(AppSurfaceCommand),
 
     /// Inspect local Warp windows.
     #[command(subcommand)]
@@ -173,9 +177,48 @@ pub enum ActionCommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum AppSurfaceCommand {
+    /// Focus the Warp app and bring it to the foreground.
+    Focus(TargetArgs),
+
+    /// Open the Settings panel.
+    SettingsOpen(AppSurfaceArgs),
+
+    /// Open the Command Palette.
+    PaletteOpen(AppSurfaceArgs),
+
+    /// Open Command Search.
+    SearchOpen(AppSurfaceArgs),
+
+    /// Open the Warp Drive panel.
+    DriveOpen(TargetArgs),
+
+    /// Toggle the Warp Drive panel.
+    DriveToggle(TargetArgs),
+
+    /// Toggle the Resource Center panel.
+    ResourceCenterToggle(TargetArgs),
+
+    /// Toggle the AI Assistant panel.
+    AiAssistantToggle(TargetArgs),
+
+    /// Toggle the Code Review panel.
+    CodeReviewToggle(TargetArgs),
+
+    /// Toggle the Vertical Tabs panel.
+    VerticalTabsToggle(TargetArgs),
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum WindowCommand {
     /// List windows in the selected local Warp app.
     List(TargetArgs),
+    /// Create a new Warp window.
+    Create(TargetArgs),
+    /// Focus a Warp window.
+    Focus(TargetArgs),
+    /// Close a Warp window.
+    Close(WindowCloseArgs),
 }
 
 /// Commands that control tabs in the selected Warp app instance.
@@ -223,12 +266,20 @@ pub enum InputCommand {
 pub enum ThemeCommand {
     /// List available themes.
     List(TargetArgs),
+    /// Set the active theme.
+    Set(ThemeSetArgs),
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum AppearanceCommand {
     /// Read appearance state.
     Get(TargetArgs),
+    /// Set appearance properties.
+    Set(AppearanceSetArgs),
+    /// Adjust font size.
+    FontSize(AppearanceSizeAdjustArgs),
+    /// Adjust zoom level.
+    Zoom(AppearanceSizeAdjustArgs),
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -244,6 +295,12 @@ pub enum SettingCommand {
 
     /// Read one allowlisted setting.
     Get(SettingGetArgs),
+
+    /// Set an allowlisted setting.
+    Set(SettingSetArgs),
+
+    /// Toggle a boolean allowlisted setting.
+    Toggle(SettingGetArgs),
 }
 
 /// Common flags for selecting which running Warp instance receives a command.
@@ -287,12 +344,93 @@ pub struct BlockGetArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct AppSurfaceArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    /// Optional query string to pre-populate the surface's search field.
+    #[arg(long = "query")]
+    pub query: Option<String>,
+
+    /// Optional page name for surfaces that support navigation to a page.
+    #[arg(long = "page")]
+    pub page: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct WindowCloseArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    /// Force close without prompting the user.
+    #[arg(long = "force")]
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ThemeSetArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    /// Theme name as returned by `theme list`.
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct AppearanceSetArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    /// Set a specific theme name.
+    #[arg(long = "theme")]
+    pub theme: Option<String>,
+
+    /// Enable or disable following the system theme.
+    #[arg(long = "follow-system-theme")]
+    pub follow_system_theme: Option<bool>,
+
+    /// Set the light mode theme name.
+    #[arg(long = "light-theme")]
+    pub light_theme: Option<String>,
+
+    /// Set the dark mode theme name.
+    #[arg(long = "dark-theme")]
+    pub dark_theme: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct AppearanceSizeAdjustArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    /// Adjustment direction: increase, decrease, reset, or set.
+    #[arg(long = "adjustment", default_value = "reset")]
+    pub adjustment: String,
+
+    /// Numeric value when using --adjustment set.
+    #[arg(long = "value")]
+    pub value: Option<u32>,
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct SettingGetArgs {
     #[command(flatten)]
     pub target: TargetArgs,
 
     /// Allowlisted setting key.
     pub key: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct SettingSetArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    /// Allowlisted setting key.
+    pub key: String,
+
+    /// JSON value to set.
+    pub value: String,
 }
 
 pub fn run(args: ControlArgs) -> ExitCode {
@@ -317,6 +455,7 @@ fn run_inner(args: ControlArgs) -> Result<(), local_control::protocol::ControlEr
         ControlCommand::Instance(command) => run_instance_command(command, output_format),
         ControlCommand::App(command) => run_app_command(command, output_format),
         ControlCommand::Action(command) => run_action_command(command, output_format),
+        ControlCommand::AppSurface(command) => run_app_surface_command(command, output_format),
         ControlCommand::Window(command) => run_window_command(command, output_format),
         ControlCommand::Tab(command) => run_tab_command(command, output_format),
         ControlCommand::Pane(command) => run_pane_command(command, output_format),

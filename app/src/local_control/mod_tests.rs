@@ -13,10 +13,12 @@ use warp_core::features::FeatureFlag;
 use warpui::{App, SingletonEntity};
 
 use super::{
-    action_metadata_for_name, appearance_state_result, capabilities, ensure_feature_enabled,
-    ensure_settings_allow_action, outside_warp_action_enabled_for_settings, rejected_setting_key,
-    require_active_window_id, setting_get_result, setting_list_result, theme_list_result,
-    validate_action_params, validate_tab_create_target, LocalControlBridge,
+    action_metadata_for_name, appearance_font_size_result, appearance_state_result,
+    appearance_zoom_result, capabilities, ensure_feature_enabled, ensure_settings_allow_action,
+    outside_warp_action_enabled_for_settings, rejected_setting_key, require_active_window_id,
+    setting_get_result, setting_list_result, setting_set_result, setting_toggle_result,
+    theme_list_result, theme_set_result, validate_action_params, validate_tab_create_target,
+    LocalControlBridge,
 };
 use crate::settings::{
     AllowOutsideWarpAppStateMutations, AllowOutsideWarpControl,
@@ -79,6 +81,7 @@ fn enable_outside_warp_metadata_reads(app: &mut App) {
         });
     });
 }
+
 fn grant_for(action: ActionKind) -> CredentialGrant {
     CredentialGrant::new(
         InstanceId("test-instance".to_owned()),
@@ -182,7 +185,20 @@ fn capabilities_advertises_core_and_metadata_slice_actions() {
             ActionKind::AppActive,
             ActionKind::ActionList,
             ActionKind::ActionGet,
+            ActionKind::AppFocus,
+            ActionKind::AppSettingsOpen,
+            ActionKind::AppCommandPaletteOpen,
+            ActionKind::AppCommandSearchOpen,
+            ActionKind::AppWarpDriveOpen,
+            ActionKind::AppWarpDriveToggle,
+            ActionKind::AppResourceCenterToggle,
+            ActionKind::AppAiAssistantToggle,
+            ActionKind::AppCodeReviewToggle,
+            ActionKind::AppVerticalTabsToggle,
             ActionKind::WindowList,
+            ActionKind::WindowCreate,
+            ActionKind::WindowFocus,
+            ActionKind::WindowClose,
             ActionKind::TabList,
             ActionKind::TabCreate,
             ActionKind::PaneList,
@@ -192,9 +208,15 @@ fn capabilities_advertises_core_and_metadata_slice_actions() {
             ActionKind::InputGet,
             ActionKind::HistoryList,
             ActionKind::ThemeList,
+            ActionKind::ThemeSet,
             ActionKind::AppearanceGet,
+            ActionKind::AppearanceSet,
+            ActionKind::AppearanceFontSize,
+            ActionKind::AppearanceZoom,
             ActionKind::SettingGet,
             ActionKind::SettingList,
+            ActionKind::SettingSet,
+            ActionKind::SettingToggle,
         ]
     );
 }
@@ -501,14 +523,36 @@ fn action_get_rejects_unallowlisted_action_names() {
 }
 
 #[test]
-fn action_metadata_lookup_reports_stub_status_for_allowlisted_future_actions() {
-    let metadata = action_metadata_for_name("window.create").expect("allowlisted action");
-
-    assert_eq!(metadata.kind, ActionKind::WindowCreate);
-    assert_eq!(
-        metadata.implementation_status,
-        ::local_control::ActionImplementationStatus::Stub
-    );
+fn action_metadata_lookup_reports_implemented_status_for_new_surface_actions() {
+    for name in [
+        "window.create",
+        "window.focus",
+        "window.close",
+        "app.focus",
+        "app.settings.open",
+        "app.command_palette.open",
+        "app.command_search.open",
+        "app.warp_drive.open",
+        "app.warp_drive.toggle",
+        "app.resource_center.toggle",
+        "app.ai_assistant.toggle",
+        "app.code_review.toggle",
+        "app.vertical_tabs.toggle",
+        "theme.set",
+        "appearance.set",
+        "appearance.font_size",
+        "appearance.zoom",
+        "setting.set",
+        "setting.toggle",
+    ] {
+        let metadata = action_metadata_for_name(name)
+            .unwrap_or_else(|err| panic!("{name} is allowlisted: {err}"));
+        assert_eq!(
+            metadata.implementation_status,
+            ::local_control::ActionImplementationStatus::Implemented,
+            "{name} should be Implemented"
+        );
+    }
 }
 
 #[test]
@@ -698,4 +742,173 @@ fn data_reads_reject_malformed_params() {
     })
     .expect_err("block.get requires a block id");
     assert_eq!(err.code, ErrorCode::InvalidParams);
+}
+
+#[test]
+fn settings_mutation_actions_require_metadata_configuration_mutation_permission() {
+    let metadata_config_without_metadata =
+        settings_with_values(true, false, false, false, true, false);
+    let metadata_without_config = settings_with_values(true, true, false, false, false, false);
+
+    for action in [
+        ActionKind::ThemeSet,
+        ActionKind::AppearanceSet,
+        ActionKind::AppearanceFontSize,
+        ActionKind::AppearanceZoom,
+        ActionKind::SettingSet,
+        ActionKind::SettingToggle,
+    ] {
+        assert_eq!(
+            action.metadata().permission_category,
+            PermissionCategory::MutateMetadataConfiguration,
+            "{} should require MutateMetadataConfiguration",
+            action.as_str()
+        );
+        ensure_settings_allow_action(
+            &metadata_config_without_metadata,
+            InvocationContext::OutsideWarp,
+            action,
+        )
+        .expect("metadata config mutation permission allows settings mutation");
+        let err = ensure_settings_allow_action(
+            &metadata_without_config,
+            InvocationContext::OutsideWarp,
+            action,
+        )
+        .expect_err("settings mutation is denied without metadata config mutation permission");
+        assert_eq!(err.code, ErrorCode::InsufficientPermissions);
+    }
+}
+
+#[test]
+fn app_surface_and_window_mutation_actions_require_app_state_mutation_permission() {
+    let app_state_without_metadata = settings_with_values(true, false, false, true, false, false);
+    let metadata_without_app_state = settings_with_values(true, true, false, false, false, false);
+
+    for action in [
+        ActionKind::AppFocus,
+        ActionKind::AppSettingsOpen,
+        ActionKind::AppCommandPaletteOpen,
+        ActionKind::AppCommandSearchOpen,
+        ActionKind::AppWarpDriveOpen,
+        ActionKind::AppWarpDriveToggle,
+        ActionKind::AppResourceCenterToggle,
+        ActionKind::AppAiAssistantToggle,
+        ActionKind::AppCodeReviewToggle,
+        ActionKind::AppVerticalTabsToggle,
+        ActionKind::WindowCreate,
+        ActionKind::WindowFocus,
+        ActionKind::WindowClose,
+    ] {
+        assert_eq!(
+            action.metadata().permission_category,
+            PermissionCategory::MutateAppState,
+            "{} should require MutateAppState",
+            action.as_str()
+        );
+        ensure_settings_allow_action(
+            &app_state_without_metadata,
+            InvocationContext::OutsideWarp,
+            action,
+        )
+        .expect("app state permission allows surface mutation action");
+        let err = ensure_settings_allow_action(
+            &metadata_without_app_state,
+            InvocationContext::OutsideWarp,
+            action,
+        )
+        .expect_err("surface mutation is denied without app state permission");
+        assert_eq!(err.code, ErrorCode::InsufficientPermissions);
+    }
+}
+
+#[test]
+fn settings_mutation_handlers_modify_and_return_updated_values() {
+    let _flag = FeatureFlag::WarpControlCli.override_enabled(true);
+
+    App::test((), |mut app| async move {
+        initialize_settings_for_tests(&mut app);
+        let bridge = app.add_model(LocalControlBridge::new);
+
+        bridge.update(&mut app, |_, ctx| {
+            let result = theme_set_result(
+                ::local_control::protocol::ThemeSetParams {
+                    name: "Dark".to_owned(),
+                },
+                ctx,
+            )
+            .expect("theme.set with a valid theme succeeds");
+            assert!(result.changed || !result.changed);
+
+            let bad_theme = theme_set_result(
+                ::local_control::protocol::ThemeSetParams {
+                    name: "NotARealTheme".to_owned(),
+                },
+                ctx,
+            );
+            assert!(bad_theme.is_err());
+            assert_eq!(bad_theme.unwrap_err().code, ErrorCode::InvalidParams);
+
+            let font_size_result = appearance_font_size_result(
+                ::local_control::protocol::AppearanceFontSizeParams {
+                    adjustment: ::local_control::protocol::SizeAdjustment::Reset,
+                    value: None,
+                },
+                ctx,
+            )
+            .expect("appearance.font_size reset succeeds");
+            assert!(!font_size_result.changed);
+
+            let zoom_result = appearance_zoom_result(
+                ::local_control::protocol::AppearanceZoomParams {
+                    adjustment: ::local_control::protocol::SizeAdjustment::Reset,
+                    value: None,
+                },
+                ctx,
+            )
+            .expect("appearance.zoom reset succeeds");
+            assert!(!zoom_result.changed);
+
+            let bad_zoom = appearance_zoom_result(
+                ::local_control::protocol::AppearanceZoomParams {
+                    adjustment: ::local_control::protocol::SizeAdjustment::Set,
+                    value: Some(99),
+                },
+                ctx,
+            );
+            assert!(bad_zoom.is_err());
+            assert_eq!(bad_zoom.unwrap_err().code, ErrorCode::InvalidParams);
+
+            let toggle_result = setting_toggle_result(
+                ::local_control::protocol::SettingToggleParams {
+                    key: "terminal.input.syntax_highlighting".to_owned(),
+                },
+                ctx,
+            )
+            .expect("setting.toggle on boolean setting succeeds");
+            assert_eq!(
+                toggle_result.setting.key,
+                "terminal.input.syntax_highlighting"
+            );
+
+            let non_bool_toggle = setting_toggle_result(
+                ::local_control::protocol::SettingToggleParams {
+                    key: "appearance.themes.theme".to_owned(),
+                },
+                ctx,
+            );
+            assert!(non_bool_toggle.is_err());
+            assert_eq!(non_bool_toggle.unwrap_err().code, ErrorCode::InvalidParams);
+
+            let private_set = setting_set_result(
+                ::local_control::protocol::SettingSetParams {
+                    key: "local_control.allow_outside_warp_control".to_owned(),
+                    value: serde_json::json!(true),
+                },
+                ctx,
+            );
+            assert!(private_set.is_err());
+            assert_eq!(private_set.unwrap_err().code, ErrorCode::NotAllowlisted);
+        });
+    });
 }

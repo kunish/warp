@@ -11,9 +11,10 @@ use crate::agent::OutputFormat;
 use crate::local_control::output::{write_json, write_json_line};
 use crate::local_control::selectors::instance_selector;
 use crate::local_control::{
-    ActionCommand, AppCommand, AppearanceCommand, BlockCommand, HistoryCommand, InputCommand,
-    InstanceCommand, PaneCommand, SessionCommand, SettingCommand, TabCommand, TargetArgs,
-    ThemeCommand, WindowCommand,
+    ActionCommand, AppCommand, AppSurfaceArgs, AppSurfaceCommand, AppearanceCommand,
+    AppearanceSizeAdjustArgs, BlockCommand, HistoryCommand, InputCommand, InstanceCommand,
+    PaneCommand, SessionCommand, SettingCommand, TabCommand, TargetArgs, ThemeCommand,
+    WindowCommand,
 };
 
 /// Display-oriented projection of a discoverable Warp instance.
@@ -129,6 +130,59 @@ pub(super) fn run_action_command(
     }
 }
 
+pub(super) fn run_app_surface_command(
+    command: AppSurfaceCommand,
+    output_format: OutputFormat,
+) -> Result<(), ControlError> {
+    match command {
+        AppSurfaceCommand::Focus(args) => {
+            run_action(args, ActionKind::AppFocus, json!({}), output_format)
+        }
+        AppSurfaceCommand::SettingsOpen(args) => {
+            run_app_surface_action(args, ActionKind::AppSettingsOpen, output_format)
+        }
+        AppSurfaceCommand::PaletteOpen(args) => {
+            run_app_surface_action(args, ActionKind::AppCommandPaletteOpen, output_format)
+        }
+        AppSurfaceCommand::SearchOpen(args) => {
+            run_app_surface_action(args, ActionKind::AppCommandSearchOpen, output_format)
+        }
+        AppSurfaceCommand::DriveOpen(args) => {
+            run_action(args, ActionKind::AppWarpDriveOpen, json!({}), output_format)
+        }
+        AppSurfaceCommand::DriveToggle(args) => run_action(
+            args,
+            ActionKind::AppWarpDriveToggle,
+            json!({}),
+            output_format,
+        ),
+        AppSurfaceCommand::ResourceCenterToggle(args) => run_action(
+            args,
+            ActionKind::AppResourceCenterToggle,
+            json!({}),
+            output_format,
+        ),
+        AppSurfaceCommand::AiAssistantToggle(args) => run_action(
+            args,
+            ActionKind::AppAiAssistantToggle,
+            json!({}),
+            output_format,
+        ),
+        AppSurfaceCommand::CodeReviewToggle(args) => run_action(
+            args,
+            ActionKind::AppCodeReviewToggle,
+            json!({}),
+            output_format,
+        ),
+        AppSurfaceCommand::VerticalTabsToggle(args) => run_action(
+            args,
+            ActionKind::AppVerticalTabsToggle,
+            json!({}),
+            output_format,
+        ),
+    }
+}
+
 pub(super) fn run_window_command(
     command: WindowCommand,
     output_format: OutputFormat,
@@ -137,6 +191,21 @@ pub(super) fn run_window_command(
         WindowCommand::List(args) => {
             run_action_with_params(args, ActionKind::WindowList, EmptyParams {}, output_format)
         }
+        WindowCommand::Create(args) => run_action_with_params(
+            args,
+            ActionKind::WindowCreate,
+            local_control::WindowCreateParams::default(),
+            output_format,
+        ),
+        WindowCommand::Focus(args) => {
+            run_action(args, ActionKind::WindowFocus, json!({}), output_format)
+        }
+        WindowCommand::Close(args) => run_action_with_params(
+            args.target,
+            ActionKind::WindowClose,
+            local_control::WindowCloseParams { force: args.force },
+            output_format,
+        ),
     }
 }
 pub(super) fn run_tab_command(
@@ -219,6 +288,12 @@ pub(super) fn run_theme_command(
         ThemeCommand::List(args) => {
             run_action_with_params(args, ActionKind::ThemeList, EmptyParams {}, output_format)
         }
+        ThemeCommand::Set(args) => run_action_with_params(
+            args.target,
+            ActionKind::ThemeSet,
+            local_control::ThemeSetParams { name: args.name },
+            output_format,
+        ),
     }
 }
 
@@ -233,6 +308,23 @@ pub(super) fn run_appearance_command(
             EmptyParams {},
             output_format,
         ),
+        AppearanceCommand::Set(args) => run_action_with_params(
+            args.target,
+            ActionKind::AppearanceSet,
+            local_control::AppearanceSetParams {
+                theme: args.theme,
+                follow_system_theme: args.follow_system_theme,
+                light_theme: args.light_theme,
+                dark_theme: args.dark_theme,
+            },
+            output_format,
+        ),
+        AppearanceCommand::FontSize(args) => {
+            run_appearance_size_action(args, ActionKind::AppearanceFontSize, output_format)
+        }
+        AppearanceCommand::Zoom(args) => {
+            run_appearance_size_action(args, ActionKind::AppearanceZoom, output_format)
+        }
     }
 }
 
@@ -266,6 +358,89 @@ pub(super) fn run_setting_command(
             local_control::SettingGetParams { key: args.key },
             output_format,
         ),
+        SettingCommand::Set(args) => {
+            let value = serde_json::from_str(&args.value).map_err(|err| {
+                ControlError::with_details(
+                    ErrorCode::InvalidParams,
+                    "setting.set value must be valid JSON",
+                    err.to_string(),
+                )
+            })?;
+            run_action_with_params(
+                args.target,
+                ActionKind::SettingSet,
+                local_control::SettingSetParams {
+                    key: args.key,
+                    value,
+                },
+                output_format,
+            )
+        }
+        SettingCommand::Toggle(args) => run_action_with_params(
+            args.target,
+            ActionKind::SettingToggle,
+            local_control::SettingToggleParams { key: args.key },
+            output_format,
+        ),
+    }
+}
+
+fn run_app_surface_action(
+    args: AppSurfaceArgs,
+    action: ActionKind,
+    output_format: OutputFormat,
+) -> Result<(), ControlError> {
+    run_action_with_params(
+        args.target,
+        action,
+        local_control::AppSurfaceParams {
+            query: args.query,
+            page: args.page,
+        },
+        output_format,
+    )
+}
+
+fn run_appearance_size_action(
+    args: AppearanceSizeAdjustArgs,
+    action: ActionKind,
+    output_format: OutputFormat,
+) -> Result<(), ControlError> {
+    let adjustment = match args.adjustment.to_lowercase().as_str() {
+        "increase" => local_control::SizeAdjustment::Increase,
+        "decrease" => local_control::SizeAdjustment::Decrease,
+        "reset" => local_control::SizeAdjustment::Reset,
+        "set" => local_control::SizeAdjustment::Set,
+        _ => {
+            return Err(ControlError::new(
+                ErrorCode::InvalidParams,
+                "--adjustment must be increase, decrease, reset, or set",
+            ));
+        }
+    };
+    match action {
+        ActionKind::AppearanceFontSize => run_action_with_params(
+            args.target,
+            action,
+            local_control::AppearanceFontSizeParams {
+                adjustment,
+                value: args.value,
+            },
+            output_format,
+        ),
+        ActionKind::AppearanceZoom => run_action_with_params(
+            args.target,
+            action,
+            local_control::AppearanceZoomParams {
+                adjustment,
+                value: args.value,
+            },
+            output_format,
+        ),
+        _ => Err(ControlError::new(
+            ErrorCode::InvalidParams,
+            format!("{} is not a size adjustment action", action.as_str()),
+        )),
     }
 }
 
