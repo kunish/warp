@@ -273,8 +273,14 @@ pub enum PaneCommand {
     Close(PaneCloseArgs),
     /// Toggle or set pane maximization.
     Maximize(PaneMaximizeArgs),
+    /// Unmaximize a maximized pane.
+    Unmaximize(TargetArgs),
     /// Resize a pane divider.
     Resize(PaneResizeArgs),
+    /// Rename a pane for vertical tabs.
+    Rename(PaneRenameArgs),
+    /// Reset a pane name.
+    ResetName(TargetArgs),
     /// Switch to the previous session in a pane.
     PreviousSession(TargetArgs),
     /// Switch to the next session in a pane.
@@ -404,6 +410,22 @@ pub struct TargetArgs {
     /// Target a specific local Warp process id.
     #[arg(long = "pid", conflicts_with = "instance")]
     pub pid: Option<u32>,
+
+    /// Select a window: active, id:<id>, index:<n>, or title:<title>.
+    #[arg(long = "window")]
+    pub window: Option<String>,
+
+    /// Select a tab: active, id:<id>, index:<n>, or title:<title>.
+    #[arg(long = "tab")]
+    pub tab: Option<String>,
+
+    /// Select a pane: active, id:<id>, or index:<n>.
+    #[arg(long = "pane")]
+    pub pane: Option<String>,
+
+    /// Select a session: active or id:<id>.
+    #[arg(long = "session")]
+    pub session: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -560,6 +582,14 @@ pub struct PaneMaximizeArgs {
 
     #[arg(long = "enabled")]
     pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct PaneRenameArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Args)]

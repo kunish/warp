@@ -175,8 +175,14 @@ pub enum ActionKind {
     PaneClose,
     #[serde(rename = "pane.maximize")]
     PaneMaximize,
+    #[serde(rename = "pane.unmaximize")]
+    PaneUnmaximize,
     #[serde(rename = "pane.resize")]
     PaneResize,
+    #[serde(rename = "pane.rename")]
+    PaneRename,
+    #[serde(rename = "pane.reset_name")]
+    PaneResetName,
     #[serde(rename = "pane.session.previous")]
     PaneSessionPrevious,
     #[serde(rename = "pane.session.next")]
@@ -284,7 +290,10 @@ impl ActionKind {
         Self::PaneNavigate,
         Self::PaneClose,
         Self::PaneMaximize,
+        Self::PaneUnmaximize,
         Self::PaneResize,
+        Self::PaneRename,
+        Self::PaneResetName,
         Self::PaneSessionPrevious,
         Self::PaneSessionNext,
         Self::SessionList,
@@ -356,7 +365,10 @@ impl ActionKind {
             Self::PaneNavigate => "pane.navigate",
             Self::PaneClose => "pane.close",
             Self::PaneMaximize => "pane.maximize",
+            Self::PaneUnmaximize => "pane.unmaximize",
             Self::PaneResize => "pane.resize",
+            Self::PaneRename => "pane.rename",
+            Self::PaneResetName => "pane.reset_name",
             Self::PaneSessionPrevious => "pane.session.previous",
             Self::PaneSessionNext => "pane.session.next",
             Self::SessionList => "session.list",
@@ -429,7 +441,9 @@ impl ActionKind {
             | Self::PaneNavigate
             | Self::PaneClose
             | Self::PaneMaximize
+            | Self::PaneUnmaximize
             | Self::PaneResize => ActionImplementationStatus::Implemented,
+            Self::PaneRename | Self::PaneResetName => ActionImplementationStatus::Implemented,
             _ => ActionImplementationStatus::Stub,
         };
         let requires_authenticated_user = self.default_requires_authenticated_user();
@@ -533,7 +547,10 @@ impl ActionKind {
             | Self::PaneFocus
             | Self::PaneNavigate
             | Self::PaneMaximize
+            | Self::PaneUnmaximize
             | Self::PaneResize
+            | Self::PaneRename
+            | Self::PaneResetName
             | Self::PaneSessionPrevious
             | Self::PaneSessionNext
             | Self::ThemeSet
@@ -578,7 +595,9 @@ impl ActionKind {
             | Self::AppearanceSet
             | Self::AppearanceFontSize
             | Self::AppearanceZoom
-            | Self::TabRename => StateDataCategory::MetadataConfigurationMutation,
+            | Self::TabRename
+            | Self::PaneRename
+            | Self::PaneResetName => StateDataCategory::MetadataConfigurationMutation,
             Self::InputInsert
             | Self::InputReplace
             | Self::InputClear
@@ -613,6 +632,7 @@ impl ActionKind {
             | Self::PaneNavigate
             | Self::PaneClose
             | Self::PaneMaximize
+            | Self::PaneUnmaximize
             | Self::PaneResize
             | Self::PaneSessionPrevious
             | Self::PaneSessionNext
@@ -663,7 +683,10 @@ impl ActionKind {
                 | Self::PaneNavigate
                 | Self::PaneClose
                 | Self::PaneMaximize
+                | Self::PaneUnmaximize
                 | Self::PaneResize
+                | Self::PaneRename
+                | Self::PaneResetName
                 | Self::PaneSessionPrevious
                 | Self::PaneSessionNext
                 | Self::InputInsert
@@ -715,7 +738,10 @@ impl ActionKind {
             | Self::PaneNavigate
             | Self::PaneClose
             | Self::PaneMaximize
+            | Self::PaneUnmaximize
             | Self::PaneResize
+            | Self::PaneRename
+            | Self::PaneResetName
             | Self::PaneSessionPrevious
             | Self::PaneSessionNext => TargetScope::Pane,
             Self::SessionList

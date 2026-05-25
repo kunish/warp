@@ -2,9 +2,9 @@
 use crate::local_control::handlers::metadata::action_metadata_for_name;
 use ::local_control::protocol::{
     ActionGetParams, BlockGetParams, BlockListParams, HistoryListParams, PaneMaximizeParams,
-    PaneNavigateParams, PaneResizeParams, PaneSplitParams, PaneTarget, SessionTarget,
-    SettingGetParams, TabActivateParams, TabCloseParams, TabMoveParams, TabTarget, TargetSelector,
-    WindowCloseParams, WindowCreateParams, WindowTarget,
+    PaneNavigateParams, PaneRenameParams, PaneResizeParams, PaneSplitParams, PaneTarget,
+    SessionTarget, SettingGetParams, TabActivateParams, TabCloseParams, TabMoveParams, TabTarget,
+    TargetSelector, WindowCloseParams, WindowCreateParams, WindowTarget,
 };
 use ::local_control::{ActionKind, ControlError, ErrorCode};
 use warpui::ModelContext;
@@ -93,7 +93,9 @@ pub(crate) fn validate_action_params(action: &::local_control::Action) -> Result
         | ActionKind::AppFocus
         | ActionKind::WindowFocus
         | ActionKind::PaneFocus
-        | ActionKind::PaneClose => validate_empty_action_params(action),
+        | ActionKind::PaneClose
+        | ActionKind::PaneUnmaximize
+        | ActionKind::PaneResetName => validate_empty_action_params(action),
         ActionKind::WindowCreate => action.params_as::<WindowCreateParams>().map(|_| ()),
         ActionKind::WindowClose => action.params_as::<WindowCloseParams>().map(|_| ()),
         ActionKind::TabActivate => action.params_as::<TabActivateParams>().map(|_| ()),
@@ -102,6 +104,15 @@ pub(crate) fn validate_action_params(action: &::local_control::Action) -> Result
         ActionKind::PaneSplit => action.params_as::<PaneSplitParams>().map(|_| ()),
         ActionKind::PaneNavigate => action.params_as::<PaneNavigateParams>().map(|_| ()),
         ActionKind::PaneMaximize => action.params_as::<PaneMaximizeParams>().map(|_| ()),
+        ActionKind::PaneRename => action.params_as::<PaneRenameParams>().and_then(|params| {
+            if params.title.trim().is_empty() {
+                return Err(ControlError::new(
+                    ErrorCode::InvalidParams,
+                    "pane.rename requires a non-empty title",
+                ));
+            }
+            Ok(())
+        }),
         ActionKind::PaneResize => action.params_as::<PaneResizeParams>().and_then(|params| {
             if params.amount == Some(0) {
                 return Err(ControlError::new(

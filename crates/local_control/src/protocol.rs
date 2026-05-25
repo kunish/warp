@@ -215,6 +215,11 @@ pub struct PaneResizeParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub amount: Option<u32>,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaneRenameParams {
+    pub title: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

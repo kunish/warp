@@ -233,7 +233,10 @@ fn capabilities_advertises_core_metadata_and_layout_mutation_actions() {
     assert!(caps.contains(&ActionKind::PaneNavigate));
     assert!(caps.contains(&ActionKind::PaneClose));
     assert!(caps.contains(&ActionKind::PaneMaximize));
+    assert!(caps.contains(&ActionKind::PaneUnmaximize));
     assert!(caps.contains(&ActionKind::PaneResize));
+    assert!(caps.contains(&ActionKind::PaneRename));
+    assert!(caps.contains(&ActionKind::PaneResetName));
     assert!(!caps.contains(&ActionKind::TabRename));
     assert!(!caps.contains(&ActionKind::PaneSessionPrevious));
     assert!(!caps.contains(&ActionKind::PaneSessionNext));
@@ -552,6 +555,20 @@ fn action_metadata_lookup_reports_implemented_status_for_layout_mutations() {
 
     let metadata = action_metadata_for_name("pane.split").expect("allowlisted action");
     assert_eq!(metadata.kind, ActionKind::PaneSplit);
+    assert_eq!(
+        metadata.implementation_status,
+        ::local_control::ActionImplementationStatus::Implemented
+    );
+
+    let metadata = action_metadata_for_name("pane.unmaximize").expect("allowlisted action");
+    assert_eq!(metadata.kind, ActionKind::PaneUnmaximize);
+    assert_eq!(
+        metadata.implementation_status,
+        ::local_control::ActionImplementationStatus::Implemented
+    );
+
+    let metadata = action_metadata_for_name("pane.rename").expect("allowlisted action");
+    assert_eq!(metadata.kind, ActionKind::PaneRename);
     assert_eq!(
         metadata.implementation_status,
         ::local_control::ActionImplementationStatus::Implemented
@@ -889,6 +906,7 @@ fn layout_mutations_use_mutate_app_state_permission_category() {
         ActionKind::PaneNavigate,
         ActionKind::PaneClose,
         ActionKind::PaneMaximize,
+        ActionKind::PaneUnmaximize,
         ActionKind::PaneResize,
     ] {
         assert_eq!(
@@ -921,6 +939,7 @@ fn layout_mutations_require_app_state_mutation_permission_not_other_grants() {
         ActionKind::PaneNavigate,
         ActionKind::PaneClose,
         ActionKind::PaneMaximize,
+        ActionKind::PaneUnmaximize,
         ActionKind::PaneResize,
     ] {
         ensure_settings_allow_action(&app_state_only, InvocationContext::OutsideWarp, action)
@@ -949,6 +968,31 @@ fn layout_mutations_require_app_state_mutation_permission_not_other_grants() {
 }
 
 #[test]
+fn pane_name_mutations_use_metadata_configuration_permission() {
+    let metadata_config_only = settings_with_values(true, false, false, false, true, false);
+    let app_state_only = settings_with_values(true, false, false, true, false, false);
+
+    for action in [ActionKind::PaneRename, ActionKind::PaneResetName] {
+        assert_eq!(
+            action.metadata().permission_category,
+            PermissionCategory::MutateMetadataConfiguration,
+            "{} should use MutateMetadataConfiguration permission",
+            action.as_str()
+        );
+        ensure_settings_allow_action(
+            &metadata_config_only,
+            InvocationContext::OutsideWarp,
+            action,
+        )
+        .expect("metadata configuration permission allows pane name mutation");
+        let err =
+            ensure_settings_allow_action(&app_state_only, InvocationContext::OutsideWarp, action)
+                .expect_err("pane name mutation denied without metadata configuration permission");
+        assert_eq!(err.code, ErrorCode::InsufficientPermissions);
+    }
+}
+
+#[test]
 fn layout_mutations_require_authenticated_user() {
     for action in [
         ActionKind::AppFocus,
@@ -963,7 +1007,10 @@ fn layout_mutations_require_authenticated_user() {
         ActionKind::PaneNavigate,
         ActionKind::PaneClose,
         ActionKind::PaneMaximize,
+        ActionKind::PaneUnmaximize,
         ActionKind::PaneResize,
+        ActionKind::PaneRename,
+        ActionKind::PaneResetName,
     ] {
         assert!(
             action.metadata().requires_authenticated_user,
@@ -1102,6 +1149,30 @@ fn layout_mutation_params_reject_malformed_inputs() {
         params: serde_json::json!({ "enabled": true }),
     })
     .expect("pane.maximize accepts enabled param");
+    validate_action_params(&Action {
+        kind: ActionKind::PaneUnmaximize,
+        params: serde_json::json!({}),
+    })
+    .expect("pane.unmaximize accepts empty params");
+
+    validate_action_params(&Action {
+        kind: ActionKind::PaneRename,
+        params: serde_json::json!({ "title": "Logs" }),
+    })
+    .expect("pane.rename accepts non-empty title");
+
+    let err = validate_action_params(&Action {
+        kind: ActionKind::PaneRename,
+        params: serde_json::json!({ "title": " " }),
+    })
+    .expect_err("pane.rename rejects empty title");
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+
+    validate_action_params(&Action {
+        kind: ActionKind::PaneResetName,
+        params: serde_json::json!({}),
+    })
+    .expect("pane.reset_name accepts empty params");
 
     validate_action_params(&Action {
         kind: ActionKind::PaneFocus,

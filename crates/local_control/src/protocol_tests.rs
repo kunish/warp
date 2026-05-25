@@ -383,6 +383,8 @@ fn settings_and_appearance_mutations_are_metadata_configuration_mutations() {
         ActionKind::AppearanceSet,
         ActionKind::AppearanceFontSize,
         ActionKind::AppearanceZoom,
+        ActionKind::PaneRename,
+        ActionKind::PaneResetName,
         ActionKind::SettingSet,
         ActionKind::SettingToggle,
     ] {
@@ -414,6 +416,31 @@ fn tab_rename_is_metadata_configuration_not_app_state() {
     );
     assert!(metadata.requires_authenticated_user);
     assert_eq!(metadata.target_scope, TargetScope::Tab);
+}
+
+#[test]
+fn pane_layout_mutations_are_app_state_and_pane_scoped() {
+    for action in [
+        ActionKind::PaneSplit,
+        ActionKind::PaneFocus,
+        ActionKind::PaneNavigate,
+        ActionKind::PaneClose,
+        ActionKind::PaneMaximize,
+        ActionKind::PaneUnmaximize,
+        ActionKind::PaneResize,
+    ] {
+        let metadata = action.metadata();
+        assert_eq!(
+            metadata.state_data_category,
+            StateDataCategory::AppStateMutation
+        );
+        assert_eq!(
+            metadata.permission_category,
+            PermissionCategory::MutateAppState
+        );
+        assert!(metadata.requires_authenticated_user);
+        assert_eq!(metadata.target_scope, TargetScope::Pane);
+    }
 }
 
 #[test]
@@ -456,6 +483,7 @@ fn mutating_contract_preserves_distinct_permission_categories() {
         ActionKind::PaneNavigate,
         ActionKind::PaneClose,
         ActionKind::PaneMaximize,
+        ActionKind::PaneUnmaximize,
         ActionKind::PaneResize,
         ActionKind::PaneSessionPrevious,
         ActionKind::PaneSessionNext,
@@ -473,6 +501,8 @@ fn mutating_contract_preserves_distinct_permission_categories() {
         ActionKind::AppearanceSet,
         ActionKind::AppearanceFontSize,
         ActionKind::AppearanceZoom,
+        ActionKind::PaneRename,
+        ActionKind::PaneResetName,
         ActionKind::SettingSet,
         ActionKind::SettingToggle,
     ] {

@@ -1,9 +1,10 @@
 //! Layout mutation handlers for local-control actions.
 use ::local_control::protocol::{
     HorizontalDirection, PaneDirection, PaneMaximizeParams, PaneMutationResult, PaneNavigateParams,
-    PaneResizeParams, PaneSplitParams, PaneTarget, SessionTarget, TabActivateParams,
-    TabActivationTarget, TabCloseParams, TabCloseScope, TabMoveParams, TabMutationResult,
-    TabTarget, TargetSelector, WindowCloseParams, WindowCreateParams, WindowTarget,
+    PaneRenameParams, PaneResizeParams, PaneSplitParams, PaneTarget, SessionTarget,
+    TabActivateParams, TabActivationTarget, TabCloseParams, TabCloseScope, TabMoveParams,
+    TabMutationResult, TabTarget, TargetSelector, WindowCloseParams, WindowCreateParams,
+    WindowTarget,
 };
 use ::local_control::{ActionKind, ControlError, ErrorCode, InstanceId};
 use serde_json::json;
@@ -338,19 +339,41 @@ pub(crate) fn close_pane(
     });
     to_pane_mutation_result(pane_id, entry.tab_id)
 }
+pub(crate) fn unmaximize_pane(
+    target: &TargetSelector,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    set_pane_maximized(
+        ActionKind::PaneUnmaximize,
+        target,
+        PaneMaximizeParams {
+            enabled: Some(false),
+        },
+        ctx,
+    )
+}
 
 pub(crate) fn maximize_pane(
     target: &TargetSelector,
     params: PaneMaximizeParams,
     ctx: &mut ModelContext<LocalControlBridge>,
 ) -> Result<serde_json::Value, ControlError> {
-    let entry = select_single_pane_entry_for_mutation(target, ActionKind::PaneMaximize, ctx)?;
+    set_pane_maximized(ActionKind::PaneMaximize, target, params, ctx)
+}
+
+fn set_pane_maximized(
+    action: ActionKind,
+    target: &TargetSelector,
+    params: PaneMaximizeParams,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    let entry = select_single_pane_entry_for_mutation(target, action, ctx)?;
     let pane_id = entry.pane_id.to_string();
     entry.pane_group.update(ctx, |pane_group, ctx| {
         if pane_group.pane_count() <= 1 {
             return Err(ControlError::new(
                 ErrorCode::TargetStateConflict,
-                "pane.maximize requires a split pane group",
+                format!("{} requires a split pane group", action.as_str()),
             ));
         }
         pane_group.focus_pane_by_id(entry.pane_id, ctx);
@@ -399,6 +422,50 @@ pub(crate) fn resize_pane(
         Ok(())
     })?;
     to_pane_mutation_result(entry.pane_id.to_string(), entry.tab_id)
+}
+pub(crate) fn rename_pane(
+    target: &TargetSelector,
+    params: PaneRenameParams,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    let entry = select_single_pane_entry_for_mutation(target, ActionKind::PaneRename, ctx)?;
+    let pane_id = entry.pane_id.to_string();
+    entry.pane_group.update(ctx, |pane_group, ctx| {
+        let pane = pane_group.pane_by_id(entry.pane_id).ok_or_else(|| {
+            ControlError::new(
+                ErrorCode::StaleTarget,
+                "pane.rename cannot resolve the requested pane id",
+            )
+        })?;
+        pane.pane_configuration().update(ctx, |configuration, ctx| {
+            configuration.set_custom_vertical_tabs_title(params.title, ctx);
+        });
+        ctx.emit(crate::pane_group::Event::AppStateChanged);
+        Ok(())
+    })?;
+    to_pane_mutation_result(pane_id, entry.tab_id)
+}
+
+pub(crate) fn reset_pane_name(
+    target: &TargetSelector,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    let entry = select_single_pane_entry_for_mutation(target, ActionKind::PaneResetName, ctx)?;
+    let pane_id = entry.pane_id.to_string();
+    entry.pane_group.update(ctx, |pane_group, ctx| {
+        let pane = pane_group.pane_by_id(entry.pane_id).ok_or_else(|| {
+            ControlError::new(
+                ErrorCode::StaleTarget,
+                "pane.reset_name cannot resolve the requested pane id",
+            )
+        })?;
+        pane.pane_configuration().update(ctx, |configuration, ctx| {
+            configuration.clear_custom_vertical_tabs_title(ctx);
+        });
+        ctx.emit(crate::pane_group::Event::AppStateChanged);
+        Ok(())
+    })?;
+    to_pane_mutation_result(pane_id, entry.tab_id)
 }
 
 pub(crate) fn reject_target_families(

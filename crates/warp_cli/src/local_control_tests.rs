@@ -2,7 +2,9 @@ use std::ffi::OsString;
 
 use clap::Parser as _;
 use clap_complete::aot::Shell;
-use local_control::protocol::{ControlError, ErrorCode};
+use local_control::protocol::{
+    ControlError, ErrorCode, PaneSelector, PaneTarget, TabTarget, TargetSelector, WindowTarget,
+};
 use serde_json::json;
 use serial_test::serial;
 
@@ -434,6 +436,35 @@ fn parses_pane_mutation_commands() {
             .command,
         ControlCommand::Pane(PaneCommand::Maximize(_))
     ));
+    assert!(matches!(
+        ControlArgs::try_parse_from(["warpctrl", "pane", "unmaximize"])
+            .expect("pane unmaximize parses")
+            .command,
+        ControlCommand::Pane(PaneCommand::Unmaximize(_))
+    ));
+
+    let args = ControlArgs::try_parse_from([
+        "warpctrl",
+        "pane",
+        "rename",
+        "--pane",
+        "id:pane-123",
+        "Logs",
+    ])
+    .expect("pane rename parses");
+    let ControlCommand::Pane(PaneCommand::Rename(rename)) = args.command else {
+        panic!("expected pane rename command");
+    };
+    assert_eq!(rename.target.pane.as_deref(), Some("id:pane-123"));
+    assert_eq!(rename.title, "Logs");
+    assert!(ControlArgs::try_parse_from(["warpctrl", "pane", "rename"]).is_err());
+
+    assert!(matches!(
+        ControlArgs::try_parse_from(["warpctrl", "pane", "reset-name"])
+            .expect("pane reset-name parses")
+            .command,
+        ControlCommand::Pane(PaneCommand::ResetName(_))
+    ));
 
     let args = ControlArgs::try_parse_from([
         "warpctrl",
@@ -450,6 +481,41 @@ fn parses_pane_mutation_commands() {
         ControlCommand::Pane(PaneCommand::Resize(_))
     ));
     assert!(ControlArgs::try_parse_from(["warpctrl", "pane", "resize"]).is_err());
+}
+#[test]
+fn target_flags_convert_to_protocol_selectors() {
+    let args = ControlArgs::try_parse_from([
+        "warpctrl",
+        "pane",
+        "focus",
+        "--window",
+        "active",
+        "--tab",
+        "index:2",
+        "--pane",
+        "id:pane-123",
+    ])
+    .expect("pane focus with selectors parses");
+    let ControlCommand::Pane(PaneCommand::Focus(target)) = args.command else {
+        panic!("expected pane focus command");
+    };
+    let selector = super::selectors::target_selector(&target).expect("selectors convert");
+    assert_eq!(
+        selector,
+        TargetSelector {
+            window: Some(WindowTarget::Active),
+            tab: Some(TabTarget::Index { index: 2 }),
+            pane: Some(PaneTarget::Id {
+                id: PaneSelector("pane-123".to_owned()),
+            }),
+            ..TargetSelector::default()
+        }
+    );
+
+    let mut invalid = target;
+    invalid.pane = Some("not-a-pane-selector".to_owned());
+    let err = super::selectors::target_selector(&invalid).expect_err("invalid selector fails");
+    assert_eq!(err.code, ErrorCode::InvalidSelector);
 }
 
 #[test]
