@@ -252,8 +252,12 @@ pub enum TabCommand {
     Last(TargetArgs),
     /// Move a target tab left or right.
     Move(TabMoveArgs),
-    /// Rename or reset a target tab title.
+    /// Rename a target tab title.
     Rename(TabRenameArgs),
+    /// Reset a target tab title.
+    ResetName(TargetArgs),
+    /// Set or reset a target tab color.
+    Color(TabColorArgs),
     /// Close a target tab or tab group.
     Close(TabCloseArgs),
 }
@@ -404,6 +408,38 @@ pub struct TargetArgs {
     /// Target a specific local Warp process id.
     #[arg(long = "pid", conflicts_with = "instance")]
     pub pid: Option<u32>,
+
+    /// Target a window using active, id:<id>, index:<n>, or title:<title>.
+    #[arg(long = "window", conflicts_with_all = ["window_id", "window_index", "window_title"])]
+    pub window: Option<String>,
+
+    /// Target a window by opaque id.
+    #[arg(long = "window-id", conflicts_with_all = ["window", "window_index", "window_title"])]
+    pub window_id: Option<String>,
+
+    /// Target a window by index.
+    #[arg(long = "window-index", conflicts_with_all = ["window", "window_id", "window_title"])]
+    pub window_index: Option<u32>,
+
+    /// Target a window by exact title.
+    #[arg(long = "window-title", conflicts_with_all = ["window", "window_id", "window_index"])]
+    pub window_title: Option<String>,
+
+    /// Target a tab using active, id:<id>, index:<n>, or title:<title>.
+    #[arg(long = "tab", conflicts_with_all = ["tab_id", "tab_index", "tab_title"])]
+    pub tab: Option<String>,
+
+    /// Target a tab by opaque id.
+    #[arg(long = "tab-id", conflicts_with_all = ["tab", "tab_index", "tab_title"])]
+    pub tab_id: Option<String>,
+
+    /// Target a tab by window-scoped index.
+    #[arg(long = "tab-index", conflicts_with_all = ["tab", "tab_id", "tab_title"])]
+    pub tab_index: Option<u32>,
+
+    /// Target a tab by exact title.
+    #[arg(long = "tab-title", conflicts_with_all = ["tab", "tab_id", "tab_index"])]
+    pub tab_title: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -505,9 +541,18 @@ pub struct TabRenameArgs {
     #[command(flatten)]
     pub target: TargetArgs,
 
-    pub title: Option<String>,
+    pub title: String,
+}
 
-    #[arg(long = "reset")]
+#[derive(Debug, Clone, Args)]
+pub struct TabColorArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    #[arg(required_unless_present = "reset")]
+    pub color: Option<String>,
+
+    #[arg(long = "reset", conflicts_with = "color")]
     pub reset: bool,
 }
 

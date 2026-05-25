@@ -161,6 +161,8 @@ pub enum ActionKind {
     TabMove,
     #[serde(rename = "tab.rename")]
     TabRename,
+    #[serde(rename = "tab.color")]
+    TabColor,
     #[serde(rename = "tab.close")]
     TabClose,
     #[serde(rename = "pane.list")]
@@ -277,6 +279,7 @@ impl ActionKind {
         Self::TabActivate,
         Self::TabMove,
         Self::TabRename,
+        Self::TabColor,
         Self::TabClose,
         Self::PaneList,
         Self::PaneSplit,
@@ -349,6 +352,7 @@ impl ActionKind {
             Self::TabActivate => "tab.activate",
             Self::TabMove => "tab.move",
             Self::TabRename => "tab.rename",
+            Self::TabColor => "tab.color",
             Self::TabClose => "tab.close",
             Self::PaneList => "pane.list",
             Self::PaneSplit => "pane.split",
@@ -423,6 +427,8 @@ impl ActionKind {
             | Self::WindowClose
             | Self::TabActivate
             | Self::TabMove
+            | Self::TabRename
+            | Self::TabColor
             | Self::TabClose
             | Self::PaneSplit
             | Self::PaneFocus
@@ -529,6 +535,7 @@ impl ActionKind {
             | Self::TabActivate
             | Self::TabMove
             | Self::TabRename
+            | Self::TabColor
             | Self::PaneSplit
             | Self::PaneFocus
             | Self::PaneNavigate
@@ -578,7 +585,8 @@ impl ActionKind {
             | Self::AppearanceSet
             | Self::AppearanceFontSize
             | Self::AppearanceZoom
-            | Self::TabRename => StateDataCategory::MetadataConfigurationMutation,
+            | Self::TabRename
+            | Self::TabColor => StateDataCategory::MetadataConfigurationMutation,
             Self::InputInsert
             | Self::InputReplace
             | Self::InputClear
@@ -657,6 +665,7 @@ impl ActionKind {
                 | Self::TabActivate
                 | Self::TabMove
                 | Self::TabRename
+                | Self::TabColor
                 | Self::TabClose
                 | Self::PaneSplit
                 | Self::PaneFocus
@@ -708,6 +717,7 @@ impl ActionKind {
             | Self::TabActivate
             | Self::TabMove
             | Self::TabRename
+            | Self::TabColor
             | Self::TabClose => TargetScope::Tab,
             Self::PaneList
             | Self::PaneSplit

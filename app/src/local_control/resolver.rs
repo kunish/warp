@@ -3,8 +3,9 @@ use crate::local_control::handlers::metadata::action_metadata_for_name;
 use ::local_control::protocol::{
     ActionGetParams, BlockGetParams, BlockListParams, HistoryListParams, PaneMaximizeParams,
     PaneNavigateParams, PaneResizeParams, PaneSplitParams, PaneTarget, SessionTarget,
-    SettingGetParams, TabActivateParams, TabCloseParams, TabMoveParams, TabTarget, TargetSelector,
-    WindowCloseParams, WindowCreateParams, WindowTarget,
+    SettingGetParams, TabActivateParams, TabCloseParams, TabColorParams, TabMoveParams,
+    TabRenameParams, TabTarget, TargetSelector, WindowCloseParams, WindowCreateParams,
+    WindowTarget,
 };
 use ::local_control::{ActionKind, ControlError, ErrorCode};
 use warpui::ModelContext;
@@ -98,6 +99,32 @@ pub(crate) fn validate_action_params(action: &::local_control::Action) -> Result
         ActionKind::WindowClose => action.params_as::<WindowCloseParams>().map(|_| ()),
         ActionKind::TabActivate => action.params_as::<TabActivateParams>().map(|_| ()),
         ActionKind::TabMove => action.params_as::<TabMoveParams>().map(|_| ()),
+        ActionKind::TabRename => action.params_as::<TabRenameParams>().and_then(|params| {
+            if params
+                .title
+                .as_deref()
+                .is_some_and(|title| title.trim().is_empty())
+            {
+                return Err(ControlError::new(
+                    ErrorCode::InvalidParams,
+                    "tab.rename title must not be empty",
+                ));
+            }
+            Ok(())
+        }),
+        ActionKind::TabColor => action.params_as::<TabColorParams>().and_then(|params| {
+            if params
+                .color
+                .as_deref()
+                .is_some_and(|color| color.trim().is_empty())
+            {
+                return Err(ControlError::new(
+                    ErrorCode::InvalidParams,
+                    "tab.color color must not be empty",
+                ));
+            }
+            Ok(())
+        }),
         ActionKind::TabClose => action.params_as::<TabCloseParams>().map(|_| ()),
         ActionKind::PaneSplit => action.params_as::<PaneSplitParams>().map(|_| ()),
         ActionKind::PaneNavigate => action.params_as::<PaneNavigateParams>().map(|_| ()),

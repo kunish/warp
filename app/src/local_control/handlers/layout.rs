@@ -2,11 +2,14 @@
 use ::local_control::protocol::{
     HorizontalDirection, PaneDirection, PaneMaximizeParams, PaneMutationResult, PaneNavigateParams,
     PaneResizeParams, PaneSplitParams, PaneTarget, SessionTarget, TabActivateParams,
-    TabActivationTarget, TabCloseParams, TabCloseScope, TabMoveParams, TabMutationResult,
-    TabTarget, TargetSelector, WindowCloseParams, WindowCreateParams, WindowTarget,
+    TabActivationTarget, TabCloseParams, TabCloseScope, TabColorParams, TabMoveParams,
+    TabMutationResult, TabRenameParams, TabTarget, TargetSelector, WindowCloseParams,
+    WindowCreateParams, WindowTarget,
 };
 use ::local_control::{ActionKind, ControlError, ErrorCode, InstanceId};
 use serde_json::json;
+use std::str::FromStr;
+use warp_core::ui::theme::AnsiColorIdentifier;
 use warpui::platform::TerminationMode;
 use warpui::{ModelContext, TypedActionView, ViewHandle, WindowId};
 
@@ -16,6 +19,7 @@ use crate::local_control::resolver::{
 use crate::local_control::LocalControlBridge;
 use crate::pane_group::{Direction as PaneGroupDirection, PaneGroup, PaneGroupAction, PaneId};
 use crate::root_view;
+use crate::tab::SelectedTabColor;
 use crate::workspace::{Workspace, WorkspaceAction};
 
 #[derive(Clone, Debug)]
@@ -208,6 +212,43 @@ pub(crate) fn move_tab(
             HorizontalDirection::Right => WorkspaceAction::MoveTabRight(entry.index),
         };
         workspace.handle_action(&action, ctx);
+    });
+    to_tab_mutation_result(tab_id, entry.window_id)
+}
+
+pub(crate) fn rename_tab(
+    target: &TargetSelector,
+    params: TabRenameParams,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    let entry = select_single_tab_entry_for_mutation(target, ActionKind::TabRename, ctx)?;
+    let workspace = workspace_for_window(entry.window_id, ActionKind::TabRename, ctx)?;
+    let tab_id = entry.pane_group.id().to_string();
+    workspace.update(ctx, |workspace, ctx| match params.title.as_deref() {
+        Some(title) => {
+            workspace.handle_action(&WorkspaceAction::ActivateTab(entry.index), ctx);
+            workspace.handle_action(&WorkspaceAction::SetActiveTabName(title.to_owned()), ctx);
+        }
+        None => workspace.handle_action(&WorkspaceAction::ResetTabName(entry.index), ctx),
+    });
+    to_tab_mutation_result(tab_id, entry.window_id)
+}
+
+pub(crate) fn color_tab(
+    target: &TargetSelector,
+    params: TabColorParams,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    let entry = select_single_tab_entry_for_mutation(target, ActionKind::TabColor, ctx)?;
+    let workspace = workspace_for_window(entry.window_id, ActionKind::TabColor, ctx)?;
+    let color = match params.color {
+        Some(color) => SelectedTabColor::Color(parse_tab_color(&color)?),
+        None => SelectedTabColor::Unset,
+    };
+    let tab_id = entry.pane_group.id().to_string();
+    workspace.update(ctx, |workspace, ctx| {
+        workspace.handle_action(&WorkspaceAction::ActivateTab(entry.index), ctx);
+        workspace.handle_action(&WorkspaceAction::SetActiveTabColor(color), ctx);
     });
     to_tab_mutation_result(tab_id, entry.window_id)
 }
@@ -818,7 +859,7 @@ fn single_entry<T>(
         ));
     }
     Err(ControlError::new(
-        ErrorCode::TargetStateConflict,
+        ErrorCode::AmbiguousTarget,
         format!(
             "{} resolved more than one {target_name}; provide a more specific selector",
             action.as_str()
@@ -851,6 +892,16 @@ fn map_pane_direction(direction: PaneDirection) -> PaneGroupDirection {
         PaneDirection::Up => PaneGroupDirection::Up,
         PaneDirection::Down => PaneGroupDirection::Down,
     }
+}
+
+fn parse_tab_color(color: &str) -> Result<AnsiColorIdentifier, ControlError> {
+    AnsiColorIdentifier::from_str(color).map_err(|err| {
+        ControlError::with_details(
+            ErrorCode::InvalidParams,
+            "tab.color requires one of red, green, yellow, blue, magenta, cyan, black, or white",
+            err.to_string(),
+        )
+    })
 }
 
 fn reject_concrete_tab_selector_for_relative_activation(

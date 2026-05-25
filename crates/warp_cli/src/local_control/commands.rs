@@ -9,8 +9,8 @@ use local_control::protocol::{
     PaneDirection, PaneFocusParams, PaneMaximizeParams, PaneNavigateParams, PaneResizeParams,
     PaneSplitParams, ProjectActiveParams, ProjectListParams, RequestEnvelope, SettingGetParams,
     SettingListParams, SettingSetParams, SettingToggleParams, SizeAdjustment, TabActivateParams,
-    TabActivationTarget, TabCloseParams, TabCloseScope, TabMoveParams, TabRenameParams,
-    ThemeSetParams, WindowCloseParams, WindowCreateParams, WindowFocusParams,
+    TabActivationTarget, TabCloseParams, TabCloseScope, TabColorParams, TabMoveParams,
+    TabRenameParams, ThemeSetParams, WindowCloseParams, WindowCreateParams, WindowFocusParams,
 };
 use local_control::selection::select_instance;
 use serde::Serialize;
@@ -19,7 +19,7 @@ use serde_json::json;
 use crate::agent::OutputFormat;
 use crate::local_control::auth_commands::{ApiKeySubcommand, AuthCommand};
 use crate::local_control::output::{write_json, write_json_line};
-use crate::local_control::selectors::instance_selector;
+use crate::local_control::selectors::{instance_selector, target_selector};
 use crate::local_control::{
     ActionCommand, AppCommand, AppSurfaceArgs, AppearanceCommand, BlockCommand, DriveCommand,
     FileCommand, HistoryCommand, InputCommand, InstanceCommand, PaneCommand, ProjectCommand,
@@ -272,10 +272,25 @@ pub(super) fn run_tab_command(
             args.target,
             ActionKind::TabRename,
             TabRenameParams {
-                title: if args.reset { None } else { args.title },
+                title: Some(args.title),
             },
             output_format,
         ),
+        TabCommand::ResetName(args) => run_action_with_params(
+            args,
+            ActionKind::TabRename,
+            TabRenameParams { title: None },
+            output_format,
+        ),
+        TabCommand::Color(args) => {
+            let color = if args.reset { None } else { args.color };
+            run_action_with_params(
+                args.target,
+                ActionKind::TabColor,
+                TabColorParams { color },
+                output_format,
+            )
+        }
         TabCommand::Close(args) => run_action_with_params(
             args.target,
             ActionKind::TabClose,
@@ -691,7 +706,7 @@ pub(super) fn run_auth_command(
     match command {
         AuthCommand::Status(args) => {
             let records = local_control::discovery::list_instances();
-            let selector = instance_selector(args);
+            let selector = instance_selector(&args);
             let instance = select_instance(&records, &selector)?;
             let request = RequestEnvelope::new(Action::new(ActionKind::AppVersion));
             let response = local_control::client::send_request(&instance, &request)?;
@@ -709,7 +724,7 @@ pub(super) fn run_auth_command(
         }
         AuthCommand::Login(args) => {
             let records = local_control::discovery::list_instances();
-            let selector = instance_selector(args);
+            let selector = instance_selector(&args);
             select_instance(&records, &selector)?;
             Err(ControlError::new(
                 ErrorCode::UnsupportedAction,
@@ -747,12 +762,13 @@ fn run_action(
     output_format: OutputFormat,
 ) -> Result<(), ControlError> {
     let records = local_control::discovery::list_instances();
-    let selector = instance_selector(args);
+    let selector = instance_selector(&args);
     let instance = select_instance(&records, &selector)?;
-    let request = RequestEnvelope::new(Action {
+    let mut request = RequestEnvelope::new(Action {
         kind: action,
         params,
     });
+    request.target = target_selector(&args)?;
     let response = local_control::client::send_request(&instance, &request)?;
     let local_control::protocol::ControlResponse::Ok { data } = response.response else {
         return Err(ControlError::new(
@@ -774,9 +790,10 @@ fn run_action_with_params<T: Serialize>(
     output_format: OutputFormat,
 ) -> Result<(), ControlError> {
     let records = local_control::discovery::list_instances();
-    let selector = instance_selector(args);
+    let selector = instance_selector(&args);
     let instance = select_instance(&records, &selector)?;
-    let request = RequestEnvelope::new(Action::with_params(action, params)?);
+    let mut request = RequestEnvelope::new(Action::with_params(action, params)?);
+    request.target = target_selector(&args)?;
     let response = local_control::client::send_request(&instance, &request)?;
     let local_control::protocol::ControlResponse::Ok { data } = response.response else {
         return Err(ControlError::new(

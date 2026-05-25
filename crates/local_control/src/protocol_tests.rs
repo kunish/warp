@@ -401,19 +401,21 @@ fn settings_and_appearance_mutations_are_metadata_configuration_mutations() {
 }
 
 #[test]
-fn tab_rename_is_metadata_configuration_not_app_state() {
-    let metadata = ActionKind::TabRename.metadata();
-    assert_eq!(metadata.risk_tier, RiskTier::MutatingNonDestructive);
-    assert_eq!(
-        metadata.state_data_category,
-        StateDataCategory::MetadataConfigurationMutation
-    );
-    assert_eq!(
-        metadata.permission_category,
-        PermissionCategory::MutateMetadataConfiguration
-    );
-    assert!(metadata.requires_authenticated_user);
-    assert_eq!(metadata.target_scope, TargetScope::Tab);
+fn tab_metadata_mutations_are_metadata_configuration_not_app_state() {
+    for action in [ActionKind::TabRename, ActionKind::TabColor] {
+        let metadata = action.metadata();
+        assert_eq!(metadata.risk_tier, RiskTier::MutatingNonDestructive);
+        assert_eq!(
+            metadata.state_data_category,
+            StateDataCategory::MetadataConfigurationMutation
+        );
+        assert_eq!(
+            metadata.permission_category,
+            PermissionCategory::MutateMetadataConfiguration
+        );
+        assert!(metadata.requires_authenticated_user);
+        assert_eq!(metadata.target_scope, TargetScope::Tab);
+    }
 }
 
 #[test]
@@ -469,6 +471,7 @@ fn mutating_contract_preserves_distinct_permission_categories() {
 
     for action in [
         ActionKind::TabRename,
+        ActionKind::TabColor,
         ActionKind::ThemeSet,
         ActionKind::AppearanceSet,
         ActionKind::AppearanceFontSize,

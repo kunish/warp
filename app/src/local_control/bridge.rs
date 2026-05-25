@@ -322,6 +322,36 @@ impl LocalControlBridge {
                     Err(error) => ResponseEnvelope::error(request.request_id, error),
                 }
             }
+            ActionKind::TabRename => {
+                if let Err(error) =
+                    ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)
+                {
+                    return ResponseEnvelope::error(request.request_id, error);
+                }
+                match request
+                    .action
+                    .params_as()
+                    .and_then(|params| layout::rename_tab(&request.target, params, ctx))
+                {
+                    Ok(data) => ResponseEnvelope::ok(request.request_id, data),
+                    Err(error) => ResponseEnvelope::error(request.request_id, error),
+                }
+            }
+            ActionKind::TabColor => {
+                if let Err(error) =
+                    ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)
+                {
+                    return ResponseEnvelope::error(request.request_id, error);
+                }
+                match request
+                    .action
+                    .params_as()
+                    .and_then(|params| layout::color_tab(&request.target, params, ctx))
+                {
+                    Ok(data) => ResponseEnvelope::ok(request.request_id, data),
+                    Err(error) => ResponseEnvelope::error(request.request_id, error),
+                }
+            }
             ActionKind::TabClose => {
                 if let Err(error) =
                     ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)

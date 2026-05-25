@@ -141,6 +141,28 @@ fn response_error_code(response: ::local_control::ResponseEnvelope) -> ErrorCode
 }
 
 #[test]
+fn tab_metadata_mutations_require_metadata_configuration_permission() {
+    let metadata_config_only = settings_with_values(true, false, false, false, true, false);
+    let app_state_only = settings_with_values(true, false, false, true, false, false);
+
+    for action in [ActionKind::TabRename, ActionKind::TabColor] {
+        ensure_settings_allow_action(
+            &metadata_config_only,
+            InvocationContext::OutsideWarp,
+            action,
+        )
+        .expect("metadata-configuration mutation permission allows tab metadata mutation");
+
+        let err =
+            ensure_settings_allow_action(&app_state_only, InvocationContext::OutsideWarp, action)
+                .expect_err(
+                    "tab metadata mutation denied without metadata-configuration permission",
+                );
+        assert_eq!(err.code, ErrorCode::InsufficientPermissions);
+    }
+}
+
+#[test]
 fn tab_create_accepts_default_and_active_targets() {
     validate_tab_create_target(&TargetSelector::default()).expect("default target is accepted");
 
@@ -227,6 +249,8 @@ fn capabilities_advertises_core_metadata_and_layout_mutation_actions() {
     assert!(caps.contains(&ActionKind::WindowClose));
     assert!(caps.contains(&ActionKind::TabActivate));
     assert!(caps.contains(&ActionKind::TabMove));
+    assert!(caps.contains(&ActionKind::TabRename));
+    assert!(caps.contains(&ActionKind::TabColor));
     assert!(caps.contains(&ActionKind::TabClose));
     assert!(caps.contains(&ActionKind::PaneSplit));
     assert!(caps.contains(&ActionKind::PaneFocus));
@@ -234,7 +258,6 @@ fn capabilities_advertises_core_metadata_and_layout_mutation_actions() {
     assert!(caps.contains(&ActionKind::PaneClose));
     assert!(caps.contains(&ActionKind::PaneMaximize));
     assert!(caps.contains(&ActionKind::PaneResize));
-    assert!(!caps.contains(&ActionKind::TabRename));
     assert!(!caps.contains(&ActionKind::PaneSessionPrevious));
     assert!(!caps.contains(&ActionKind::PaneSessionNext));
     assert!(!caps.contains(&ActionKind::InputRun));
@@ -560,8 +583,8 @@ fn action_metadata_lookup_reports_implemented_status_for_layout_mutations() {
 
 #[test]
 fn action_metadata_lookup_reports_stub_status_for_deferred_actions() {
-    let metadata = action_metadata_for_name("tab.rename").expect("allowlisted action");
-    assert_eq!(metadata.kind, ActionKind::TabRename);
+    let metadata = action_metadata_for_name("input.run").expect("allowlisted action");
+    assert_eq!(metadata.kind, ActionKind::InputRun);
     assert_eq!(
         metadata.implementation_status,
         ::local_control::ActionImplementationStatus::Stub
@@ -957,6 +980,8 @@ fn layout_mutations_require_authenticated_user() {
         ActionKind::WindowClose,
         ActionKind::TabActivate,
         ActionKind::TabMove,
+        ActionKind::TabRename,
+        ActionKind::TabColor,
         ActionKind::TabClose,
         ActionKind::PaneSplit,
         ActionKind::PaneFocus,
@@ -1057,6 +1082,37 @@ fn layout_mutation_params_reject_malformed_inputs() {
         params: serde_json::json!({ "direction": "left" }),
     })
     .expect("tab.move accepts direction");
+
+    validate_action_params(&Action {
+        kind: ActionKind::TabRename,
+        params: serde_json::json!({ "title": "Build logs" }),
+    })
+    .expect("tab.rename accepts title");
+
+    validate_action_params(&Action {
+        kind: ActionKind::TabRename,
+        params: serde_json::json!({}),
+    })
+    .expect("tab.rename accepts reset-name params");
+
+    let err = validate_action_params(&Action {
+        kind: ActionKind::TabRename,
+        params: serde_json::json!({ "title": "" }),
+    })
+    .expect_err("tab.rename rejects empty title");
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+
+    validate_action_params(&Action {
+        kind: ActionKind::TabColor,
+        params: serde_json::json!({ "color": "red" }),
+    })
+    .expect("tab.color accepts color");
+
+    validate_action_params(&Action {
+        kind: ActionKind::TabColor,
+        params: serde_json::json!({}),
+    })
+    .expect("tab.color accepts reset params");
 
     let err = validate_action_params(&Action {
         kind: ActionKind::PaneSplit,

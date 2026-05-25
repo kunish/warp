@@ -2,7 +2,9 @@ use std::ffi::OsString;
 
 use clap::Parser as _;
 use clap_complete::aot::Shell;
-use local_control::protocol::{ControlError, ErrorCode};
+use local_control::protocol::{
+    ControlError, ErrorCode, TabSelector, TabTarget, TargetSelector, WindowSelector, WindowTarget,
+};
 use serde_json::json;
 use serial_test::serial;
 
@@ -342,6 +344,82 @@ fn parses_window_mutation_commands() {
 }
 
 #[test]
+fn parses_window_and_tab_target_selectors() {
+    let args = ControlArgs::try_parse_from([
+        "warpctrl",
+        "tab",
+        "activate",
+        "--window-id",
+        "win_123",
+        "--tab",
+        "index:2",
+    ])
+    .expect("tab activate target selectors parse");
+    let ControlCommand::Tab(TabCommand::Activate(target)) = args.command else {
+        panic!("expected tab activate command");
+    };
+    let selector = selectors::target_selector(&target).expect("target selector builds");
+    assert_eq!(
+        selector,
+        TargetSelector {
+            window: Some(WindowTarget::Id {
+                id: WindowSelector("win_123".to_owned())
+            }),
+            tab: Some(TabTarget::Index { index: 2 }),
+            ..TargetSelector::default()
+        }
+    );
+
+    let args =
+        ControlArgs::try_parse_from(["warpctrl", "window", "focus", "--window", "id:win_456"])
+            .expect("window focus generic selector parses");
+    let ControlCommand::Window(WindowCommand::Focus(target)) = args.command else {
+        panic!("expected window focus command");
+    };
+    let selector = selectors::target_selector(&target).expect("target selector builds");
+    assert_eq!(
+        selector.window,
+        Some(WindowTarget::Id {
+            id: WindowSelector("win_456".to_owned())
+        })
+    );
+
+    let args = ControlArgs::try_parse_from(["warpctrl", "tab", "activate", "--tab-id", "tab_123"])
+        .expect("tab id selector parses");
+    let ControlCommand::Tab(TabCommand::Activate(target)) = args.command else {
+        panic!("expected tab activate command");
+    };
+    let selector = selectors::target_selector(&target).expect("target selector builds");
+    assert_eq!(
+        selector.tab,
+        Some(TabTarget::Id {
+            id: TabSelector("tab_123".to_owned())
+        })
+    );
+
+    let args = ControlArgs::try_parse_from(["warpctrl", "tab", "activate", "--window", "nonsense"])
+        .expect("invalid generic selector parses at CLI layer");
+    let ControlCommand::Tab(TabCommand::Activate(target)) = args.command else {
+        panic!("expected tab activate command");
+    };
+    let err = selectors::target_selector(&target).expect_err("invalid selector rejected");
+    assert_eq!(err.code, ErrorCode::InvalidSelector);
+
+    assert!(
+        ControlArgs::try_parse_from([
+            "warpctrl",
+            "tab",
+            "activate",
+            "--tab-id",
+            "tab_123",
+            "--tab-index",
+            "0",
+        ])
+        .is_err()
+    );
+}
+
+#[test]
 fn parses_tab_mutation_commands() {
     assert!(matches!(
         ControlArgs::try_parse_from(["warpctrl", "tab", "activate"])
@@ -367,6 +445,39 @@ fn parses_tab_mutation_commands() {
             .command,
         ControlCommand::Tab(TabCommand::Last(_))
     ));
+
+    let args = ControlArgs::try_parse_from(["warpctrl", "tab", "rename", "Build logs"])
+        .expect("tab rename parses");
+    let ControlCommand::Tab(TabCommand::Rename(rename)) = args.command else {
+        panic!("expected tab rename command");
+    };
+    assert_eq!(rename.title, "Build logs");
+
+    assert!(matches!(
+        ControlArgs::try_parse_from(["warpctrl", "tab", "reset-name"])
+            .expect("tab reset-name parses")
+            .command,
+        ControlCommand::Tab(TabCommand::ResetName(_))
+    ));
+
+    let args =
+        ControlArgs::try_parse_from(["warpctrl", "tab", "color", "red"]).expect("tab color parses");
+    let ControlCommand::Tab(TabCommand::Color(color)) = args.command else {
+        panic!("expected tab color command");
+    };
+    assert_eq!(color.color.as_deref(), Some("red"));
+    assert!(!color.reset);
+
+    let args = ControlArgs::try_parse_from(["warpctrl", "tab", "color", "--reset"])
+        .expect("tab color reset parses");
+    let ControlCommand::Tab(TabCommand::Color(color)) = args.command else {
+        panic!("expected tab color command");
+    };
+    assert!(color.color.is_none());
+    assert!(color.reset);
+
+    assert!(ControlArgs::try_parse_from(["warpctrl", "tab", "color"]).is_err());
+    assert!(ControlArgs::try_parse_from(["warpctrl", "tab", "color", "red", "--reset"]).is_err());
 
     let args = ControlArgs::try_parse_from(["warpctrl", "tab", "move", "--direction", "right"])
         .expect("tab move parses");
