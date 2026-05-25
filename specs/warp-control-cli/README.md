@@ -30,7 +30,7 @@ Run `warpctrl --version` after installation to confirm the shell is resolving th
 Build locally with `cargo build -p warp --bin warpctrl`, then run `target\debug\warpctrl.exe` or copy that binary onto `PATH`.
 The Windows-native binary target exists in this slice. Installer helper creation and release-artifact wiring still need a later packaging change before docs can promise an installer-provided `warpctrl` command.
 ## End-to-end local test flow
-Use matching app and CLI bits from the same branch or release artifact so the protocol version and action catalog agree.
+Use matching app and CLI bits from the same branch or release artifact so the protocol version, parser, and action catalog agree.
 1. Start Warp and leave at least one window open.
 2. Confirm that the local-control server registered the running process:
    ```bash
@@ -45,15 +45,88 @@ Use matching app and CLI bits from the same branch or release artifact so the pr
    warpctrl tab create --instance <instance_id>
    ```
 5. Verify the running app receives focus for the selected instance and a new terminal tab appears according to Warp's normal new-tab placement behavior.
-6. In a future slice that implements `tab list`, inspect state before and after the mutation:
-   ```bash
-   warpctrl tab list --instance <instance_id>
-   ```
+6. Inspect the structured output with `--output-format json` when wiring scripts or agent workflows.
 Expected failures:
 - no running compatible app: exits non-zero with a no-instance error;
 - multiple ambiguous instances: exits non-zero and asks for `--instance`;
 - unsupported app build or stale discovery record: exits non-zero with a protocol, stale-target, or transport error;
 - `tab.create` not yet implemented by the running app bridge: exits non-zero with an unsupported-action error.
+## Command reference status
+The current foundation branch exposes only the first end-to-end command slice in the public parser. Broader product commands may appear in `PRODUCT.md` as approved planned scope, and some protocol variants already exist as catalog stubs, but operator docs and agent skills must not imply those commands are usable until the selected app advertises them as implemented.
+### Implemented parser commands
+- `warpctrl instance list` — action: `instance.list`, status: implemented, category: metadata read, permission: read metadata, authenticated Warp user: no, invocation context: outside Warp.
+- `warpctrl app ping [--instance <id>|--pid <pid>]` — action: `app.ping`, status: implemented, category: metadata read, permission: read metadata, authenticated Warp user: no, invocation context: outside Warp.
+- `warpctrl app version [--instance <id>|--pid <pid>]` — action: `app.version`, status: implemented, category: metadata read, permission: read metadata, authenticated Warp user: no, invocation context: outside Warp.
+- `warpctrl tab create [--instance <id>|--pid <pid>]` — action: `tab.create`, status: implemented, category: app-state mutation, permission: mutate app state, authenticated Warp user: no, invocation context: outside Warp.
+- `warpctrl completions [bash|zsh|fish|powershell|elvish]` — local CLI helper only; it generates shell completions and does not call the local-control protocol.
+### Catalog stubs in this branch
+The protocol catalog currently reserves these action names but marks them as stubs. They are not accepted by the public parser in this branch unless a higher shard adds the parser and bridge handler:
+- `app.inspect`, status: stub.
+- `app.active`, status: stub.
+- `app.focus`, status: stub.
+- `app.settings.open`, status: stub.
+- `app.command_palette.open`, status: stub.
+- `app.command_search.open`, status: stub.
+- `app.warp_drive.open`, status: stub.
+- `app.warp_drive.toggle`, status: stub.
+- `app.resource_center.toggle`, status: stub.
+- `app.ai_assistant.toggle`, status: stub.
+- `app.code_review.toggle`, status: stub.
+- `app.vertical_tabs.toggle`, status: stub.
+- `window.list`, status: stub.
+- `window.create`, status: stub.
+- `window.focus`, status: stub.
+- `window.close`, status: stub.
+- `tab.list`, status: stub.
+- `tab.activate`, status: stub.
+- `tab.move`, status: stub.
+- `tab.rename`, status: stub.
+- `tab.close`, status: stub.
+- `pane.list`, status: stub.
+- `pane.split`, status: stub.
+- `pane.focus`, status: stub.
+- `pane.navigate`, status: stub.
+- `pane.close`, status: stub.
+- `pane.maximize`, status: stub.
+- `pane.resize`, status: stub.
+- `pane.session.previous`, status: stub.
+- `pane.session.next`, status: stub.
+- `session.list`, status: stub.
+- `input.insert`, status: stub.
+- `input.replace`, status: stub.
+- `input.clear`, status: stub.
+- `input.mode.set`, status: stub.
+- `theme.list`, status: stub.
+- `theme.set`, status: stub.
+- `appearance.get`, status: stub.
+- `appearance.set`, status: stub.
+- `appearance.font_size`, status: stub.
+- `appearance.zoom`, status: stub.
+- `setting.get`, status: stub.
+- `setting.list`, status: stub.
+- `setting.set`, status: stub.
+- `setting.toggle`, status: stub.
+### Approved planned product entries not yet in this branch's runtime catalog
+These commands are part of the approved product direction in `PRODUCT.md`, but the foundation runtime catalog does not advertise them yet. Docs, skills, and examples should describe them as planned until the corresponding shard adds parser support, catalog metadata, permission tests, and bridge handlers:
+- Read-only structural inspection: `instance inspect`, `app active`, `capability list`, `capability inspect`, `window inspect`, `tab inspect`, `pane inspect`, and `session inspect`.
+- Underlying-data reads: `block list`, `block inspect`, `block output`, `input get`, and `history list`.
+- Additional metadata reads: `theme get`, `setting list`, `setting get`, `keybinding list`, `keybinding get`, `action list`, and `action inspect`.
+- App-state file and project intents: `file open`, `file list`, `project active`, `project list`, and `project open`.
+- Warp Drive reads and app-state opens: `drive list`, `drive inspect`, `drive open`, `drive notebook open`, `drive env-var-collection open`, and `drive object share open`.
+- Authenticated Warp Drive mutations: `drive object create`, `drive object update`, `drive object delete`, `drive object insert`, `drive object share-to-team`, and `drive workflow run`.
+- Auth setup and inspection: `auth status`, `auth login`, `auth api-key set`, `auth api-key status`, and `auth api-key revoke`.
+- Execution-underlying command submission: `input run`.
+### Explicit exclusions
+`warpctrl` operates Warp product surfaces, not arbitrary local filesystems or internal dispatch tables. The public catalog must not include local file content reads, local file content writes, local file appends, local file deletes, accepted-command submission, agent-prompt submission, arbitrary internal action dispatch, arbitrary ACL editing, external sharing, or public-link creation.
+File/path support is limited to app-state and metadata behavior:
+- `file open <path>` opens a file in Warp's visible editor surface.
+- `file list` lists files currently open in Warp editor state.
+- `project open`, `project list`, and `project active` operate Warp project/workspace state.
+Use native file tools, shell commands, or editor integrations for filesystem content reads, writes, appends, and deletes.
+Warp Drive sharing v0 has two distinct paths:
+- `drive object share open <id>` is an app-state mutation that opens the share dialog for user review and does not change sharing state.
+- `drive object share-to-team <id>` is the only direct native sharing mutation in the v0 product scope. It makes a personal object available to the current user's team through Warp's standard team-sharing behavior and requires authenticated-user plus underlying-data-mutation authority.
+Sharing with named users, external guests, arbitrary ACL edits, and public links remain excluded until separately reviewed.
 ## Security model
 The local-control protocol is designed for same-user scripting, not cross-user or network access. The trust boundary is the local user account.
 - **Loopback-only listener.** Each Warp process binds its control server to `127.0.0.1` on an ephemeral port. The listener is not reachable from the network.

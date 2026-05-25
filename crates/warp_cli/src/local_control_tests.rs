@@ -3,6 +3,7 @@ use std::ffi::OsString;
 use clap::Parser as _;
 use clap_complete::aot::Shell;
 use local_control::protocol::{ControlError, ErrorCode};
+use local_control::{ActionImplementationStatus, ActionKind};
 use serde_json::json;
 use serial_test::serial;
 
@@ -107,4 +108,61 @@ fn tab_create_without_discovery_records_reports_no_instance() {
     let error = run_inner(args).expect_err("missing instance is rejected");
     restore_discovery_dir(previous);
     assert_eq!(error.code, ErrorCode::NoInstance);
+}
+
+#[test]
+fn operator_readme_tracks_action_catalog_status() {
+    let readme = include_str!("../../../specs/warp-control-cli/README.md");
+    for action in ActionKind::ALL {
+        let metadata = action.metadata();
+        assert!(
+            readme.contains(&format!("`{}`", metadata.name)),
+            "README must mention catalog action {}",
+            metadata.name
+        );
+        let status = match metadata.implementation_status {
+            ActionImplementationStatus::Implemented => "status: implemented",
+            ActionImplementationStatus::Stub => "status: stub",
+        };
+        assert!(
+            readme.contains(&format!("`{}`, {status}", metadata.name))
+                || readme.contains(&format!("action: `{}`, {status}", metadata.name)),
+            "README must document implementation status for {}",
+            metadata.name
+        );
+    }
+}
+
+#[test]
+fn dogfood_warpctrl_skill_documents_current_boundaries() {
+    let skill = include_str!("../../../resources/channel-gated-skills/dogfood/warpctrl/SKILL.md");
+    for command in [
+        "warpctrl instance list",
+        "warpctrl app ping",
+        "warpctrl app version",
+        "warpctrl tab create",
+    ] {
+        assert!(skill.contains(command), "skill must mention {command}");
+    }
+    for excluded in [
+        "file read",
+        "file write",
+        "file append",
+        "file delete",
+        "accepted-command submission",
+        "agent-prompt submission",
+        "arbitrary internal dispatch",
+        "public links",
+    ] {
+        assert!(
+            skill.contains(excluded),
+            "skill must document excluded boundary {excluded}"
+        );
+    }
+    for sharing_path in ["drive object share open", "drive object share-to-team"] {
+        assert!(
+            skill.contains(sharing_path),
+            "skill must document Drive sharing path {sharing_path}"
+        );
+    }
 }
