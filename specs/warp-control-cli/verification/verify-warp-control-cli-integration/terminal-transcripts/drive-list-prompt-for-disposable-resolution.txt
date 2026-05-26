@@ -1,0 +1,417 @@
+$ target/debug/warpctrl --output-format json drive list --type prompt
+{
+  "objects": [
+    {
+      "id": "pmkbqVnKKC8ED0qOjTE0hE",
+      "name": "Add UGC Eval Prompt",
+      "object_type": "prompt"
+    },
+    {
+      "id": "gDmbWaNBQ0Lf2X7VmFCiIA",
+      "name": "Add a client feature flag",
+      "object_type": "prompt"
+    },
+    {
+      "id": "o2EeC6eD8cuYWd5YsB56po",
+      "name": "Add a feature flag for existing changes (warp-internal)",
+      "object_type": "prompt"
+    },
+    {
+      "id": "Zd3JK0YjxZ0AVsDmP4OHbX",
+      "name": "Add a new model to our public documentation",
+      "object_type": "prompt"
+    },
+    {
+      "id": "nKcFYlZsCtxdlYuAP78L49",
+      "name": "Add a new model to our server codebase",
+      "object_type": "prompt"
+    },
+    {
+      "id": "pjp6mUyRciN1nXOo7K3yTd",
+      "name": "Add a server-side feature flag",
+      "object_type": "prompt"
+    },
+    {
+      "id": "ls1rgbXn6fPhAvvRVkb5Ga",
+      "name": "Add a server-side feature flag (1)",
+      "object_type": "prompt"
+    },
+    {
+      "id": "Xs8jj9UXSX4IJellomEJ4p",
+      "name": "Add tests to current PR",
+      "object_type": "prompt"
+    },
+    {
+      "id": "7wyPgxMNC3yokQWxWJwSNU",
+      "name": "Add tests to current Pull Request",
+      "object_type": "prompt"
+    },
+    {
+      "id": "VMMWD7pxtVt8Mhl2ZWzqXy",
+      "name": "Architecture diagram",
+      "object_type": "prompt"
+    },
+    {
+      "id": "j3SeIKwpTAhFBSUWPhcIJh",
+      "name": "Break PR into smaller components",
+      "object_type": "prompt"
+    },
+    {
+      "id": "EtgtFFqvolQwy2i4FVUxVL",
+      "name": "Clean up a feature flag in warp-server",
+      "object_type": "prompt"
+    },
+    {
+      "id": "99JHDCRfeZGcWolRHcBFaX",
+      "name": "Clone a warp repo into new directory",
+      "object_type": "prompt"
+    },
+    {
+      "id": "0Fxq4tJLbfx9jZCTBtX4MA",
+      "name": "Clone an existing repo for use with Dispatch",
+      "object_type": "prompt"
+    },
+    {
+      "id": "Bm2G6dm3HBKLjPYlluUcMY",
+      "name": "Clone and install Warp's themes repository",
+      "object_type": "prompt"
+    },
+    {
+      "id": "vkF8jBmEGaIH4ThRSefGO0",
+      "name": "CoW Prompt for fixing circular dependency",
+      "object_type": "prompt"
+    },
+    {
+      "id": "aa9bHFBEQnkaLNKui8D3KH",
+      "name": "Code on Warp preliminary demo",
+      "object_type": "prompt"
+    },
+    {
+      "id": "2BxO9DStA3GPpVUlmYCqM9",
+      "name": "Code with Zach website page",
+      "object_type": "prompt"
+    },
+    {
+      "id": "PLfjFh3c6hOna3r8EDSurl",
+      "name": "Coinbase DB migration demo",
+      "object_type": "prompt"
+    },
+    {
+      "id": "AQ5Vlms7sLZ01L2UVlVM4n",
+      "name": "Commit and push open changes with good commit message",
+      "object_type": "prompt"
+    },
+    {
+      "id": "1uleOUEAebpJuzZJfVVdoT",
+      "name": "Connect to my local warp psql instance",
+      "object_type": "prompt"
+    },
+    {
+      "id": "5PhIthpF9AFgK3ZjpOOSNJ",
+      "name": "Context for \"Add @ button to linked code blocks\"",
+      "object_type": "prompt"
+    },
+    {
+      "id": "RBsCrfNv9BOD1nyCGU5hpN",
+      "name": "Create Commit with Description and push to origin",
+      "object_type": "prompt"
+    },
+    {
+      "id": "fGNd5Z7xHJaXE46fZywtln",
+      "name": "Create a PR from current branch",
+      "object_type": "prompt"
+    },
+    {
+      "id": "uJSYthQIhsFbG3eoR7hnfa",
+      "name": "Create a linear issue",
+      "object_type": "prompt"
+    },
+    {
+      "id": "rjU5wcsb894kwnZqMTq7Uf",
+      "name": "Create commit with description and push to origin",
+      "object_type": "prompt"
+    },
+    {
+      "id": "T8IqDf6qNbZzd3kcg93P44",
+      "name": "Create the settings data model and update logic",
+      "object_type": "prompt"
+    },
+    {
+      "id": "VDfaD2FZWCf2CwSWP8Kh2i",
+      "name": "Data Expert Onboarding",
+      "object_type": "prompt"
+    },
+    {
+      "id": "RoKAP6DhuG8F9VabDvIsNV",
+      "name": "Data Expert Wind Down",
+      "object_type": "prompt"
+    },
+    {
+      "id": "1ACGQWJdWsRsTE6uCZAzNG",
+      "name": "Diagnose failing dbt run issues",
+      "object_type": "prompt"
+    },
+    {
+      "id": "zMDyr4U5REKphFRKt5EA8q",
+      "name": "Digest of yesterday's warp user feedback",
+      "object_type": "prompt"
+    },
+    {
+      "id": "2VDWRyNxwzgUUK7HrQO0u6",
+      "name": "Disable Client Ports",
+      "object_type": "prompt"
+    },
+    {
+      "id": "86sNcGolQEQAXgckfmS4pV",
+      "name": "Eng productivity webapp with OpenAI Agents SDK",
+      "object_type": "prompt"
+    },
+    {
+      "id": "S2MhEXYmnpmFa7gm0EQHWL",
+      "name": "Explain a repo",
+      "object_type": "prompt"
+    },
+    {
+      "id": "fawJhiTHqNE5g3acYDM7G8",
+      "name": "Explain how this codebase works",
+      "object_type": "prompt"
+    },
+    {
+      "id": "H4cSw89LTM6r0C8eICKCKL",
+      "name": "Export warp drive objects preserving folder structure",
+      "object_type": "prompt"
+    },
+    {
+      "id": "y62Gf38mvwTiVYiiky6ge1",
+      "name": "Fetch PR comments ",
+      "object_type": "prompt"
+    },
+    {
+      "id": "ilzMh9zLB9Baj0fRpLKXFC",
+      "name": "Fix Rust Compilation Errors",
+      "object_type": "prompt"
+    },
+    {
+      "id": "wZlYnxaERKaUFptGiGkBg3",
+      "name": "Fix a linear issue",
+      "object_type": "prompt"
+    },
+    {
+      "id": "iUCu0l6Iyd0TQqNQDDe8IH",
+      "name": "Flag on a feature in production",
+      "object_type": "prompt"
+    },
+    {
+      "id": "fdoAn1Gr7AjncdMs1EzY7v",
+      "name": "GCloud Log Analysis",
+      "object_type": "prompt"
+    },
+    {
+      "id": "sWCykOeJtU8oFYUfAM9AQa",
+      "name": "Generate a custom Warp theme",
+      "object_type": "prompt"
+    },
+    {
+      "id": "S4NQZpTVSVGzbmyMEcHta7",
+      "name": "Github MCP Server",
+      "object_type": "prompt"
+    },
+    {
+      "id": "n5NtMNQS2BaU6D0eYYvkTX",
+      "name": "Have AI review your diff",
+      "object_type": "prompt"
+    },
+    {
+      "id": "Bdwln8XEQzBdwzprLS9zCz",
+      "name": "LLM testing script",
+      "object_type": "prompt"
+    },
+    {
+      "id": "HIOT0JocChQGnmEJEojDpM",
+      "name": "Lovable / bolt / v0 clone",
+      "object_type": "prompt"
+    },
+    {
+      "id": "VGVcGVbHExooQEIW7gZ1ZB",
+      "name": "Make a Dogfood feature flag default on",
+      "object_type": "prompt"
+    },
+    {
+      "id": "PpG5huSFwgUmRSxoOUa7hi",
+      "name": "Make a PR from my open changes",
+      "object_type": "prompt"
+    },
+    {
+      "id": "pFuECghymcSF3fYGuF9lxc",
+      "name": "Merge master or develop into my current branch",
+      "object_type": "prompt"
+    },
+    {
+      "id": "X4WlVDEMFyI5bnlYcIEZZa",
+      "name": "Open IPs in our staging project",
+      "object_type": "prompt"
+    },
+    {
+      "id": "003cOQRYC1haFErkZGNjy0",
+      "name": "OpenAI Dev Day QR Code prompt ",
+      "object_type": "prompt"
+    },
+    {
+      "id": "fRXAg0PxWoI7f9sLFFDkdL",
+      "name": "Respond to PR comments",
+      "object_type": "prompt"
+    },
+    {
+      "id": "x8PcJu3EaDMgyNMYFlkwi1",
+      "name": "Review and fix changes on current branch",
+      "object_type": "prompt"
+    },
+    {
+      "id": "iyl27hB1UC83FUOEndregJ",
+      "name": "Review my changes for PR",
+      "object_type": "prompt"
+    },
+    {
+      "id": "mD2pS3ZImfufF6kuPchVQ4",
+      "name": "Review my code",
+      "object_type": "prompt"
+    },
+    {
+      "id": "I2rQBYtYoJvsPw8Pn5dPT0",
+      "name": "Review my code (1)",
+      "object_type": "prompt"
+    },
+    {
+      "id": "EDeDFhAvXyINpoUpCs99NY",
+      "name": "Run Presubmit Checks and Fix Errors",
+      "object_type": "prompt"
+    },
+    {
+      "id": "AFW9O1GNJytylyT6gMTRf6",
+      "name": "Secrets comparison",
+      "object_type": "prompt"
+    },
+    {
+      "id": "LUNZe0RIfwDgN3zB7DmC9F",
+      "name": "Set the stage for a new PR",
+      "object_type": "prompt"
+    },
+    {
+      "id": "xGq8ZCxVO9hAE5883yfQBn",
+      "name": "Show all changes in PR as markdown blocks",
+      "object_type": "prompt"
+    },
+    {
+      "id": "LvOIYXdQOnwIBTMFQ8aGSs",
+      "name": "Snake game",
+      "object_type": "prompt"
+    },
+    {
+      "id": "6BwU0WJYqCAOLTkLiMNGQI",
+      "name": "Social Listening 2 - Slack",
+      "object_type": "prompt"
+    },
+    {
+      "id": "PT6azFjF5rHpAu2qGqutf0",
+      "name": "Social listening 1 - Twitter API",
+      "object_type": "prompt"
+    },
+    {
+      "id": "OMbBMUv4QgGuQODzNU1qlY",
+      "name": "Social listening 3 - postgres database",
+      "object_type": "prompt"
+    },
+    {
+      "id": "GdljiaQ7OQ4DHFL3wxTJGV",
+      "name": "Summarize all PRs assigned to a user for review",
+      "object_type": "prompt"
+    },
+    {
+      "id": "35EcGirDTtvZU5jpXF36ok",
+      "name": "Summarize my cloud logs",
+      "object_type": "prompt"
+    },
+    {
+      "id": "mdxVmZ3XsLN58gKHRm6Akc",
+      "name": "TBench analysis",
+      "object_type": "prompt"
+    },
+    {
+      "id": "GwQIpWXBqASTI7lO5kHmgz",
+      "name": "Teach a new user how to use the terminal",
+      "object_type": "prompt"
+    },
+    {
+      "id": "Fi0DnsDXdnFDAxoeTxAxiX",
+      "name": "Understand the current PR",
+      "object_type": "prompt"
+    },
+    {
+      "id": "RNqMbKhmd80wmqLCSzscbe",
+      "name": "Untitled Prompt",
+      "object_type": "prompt"
+    },
+    {
+      "id": "MK8g45Hh20DaPPsMd4ZOXa",
+      "name": "Update dev server for new model preview",
+      "object_type": "prompt"
+    },
+    {
+      "id": "iBY2EDuTAQnMcl2CxLpfPc",
+      "name": "Update/Edit PR Description with Changes",
+      "object_type": "prompt"
+    },
+    {
+      "id": "40yDoKBLS0EcW1JzoeTsWM",
+      "name": "Warp PR leaderboard (CLI)",
+      "object_type": "prompt"
+    },
+    {
+      "id": "y3asdDLGDSjiiY049StPAs",
+      "name": "Warp PR leaderboard (python)",
+      "object_type": "prompt"
+    },
+    {
+      "id": "QSRK6Z04CflSmJExPXYCRT",
+      "name": "[Not adding] Build me a game",
+      "object_type": "prompt"
+    },
+    {
+      "id": "5mtZdpat945Cz0XaFzhD2J",
+      "name": "billing cycle refresh",
+      "object_type": "prompt"
+    },
+    {
+      "id": "TTo7Laesf0gUa1zuvDoS2d",
+      "name": "galileo weekly funnel research prompt",
+      "object_type": "prompt"
+    },
+    {
+      "id": "i2EezT3D8MM46IkhY7M59H",
+      "name": "github-issue-fixer",
+      "object_type": "prompt"
+    },
+    {
+      "id": "Llaio5gYT9Eqad0Ml9jfJK",
+      "name": "github-issue-orchestrator",
+      "object_type": "prompt"
+    },
+    {
+      "id": "pm1IraAf2f2ZroGpsRWIkv",
+      "name": "grant dbt reader access to prod table fields",
+      "object_type": "prompt"
+    },
+    {
+      "id": "cXIdAlBqIQHKhj2NBea6DM",
+      "name": "move am_conversation to desktop",
+      "object_type": "prompt"
+    },
+    {
+      "id": "TyDIJ3jAMrZ3qd1ixWfMVb",
+      "name": "test long prompt",
+      "object_type": "prompt"
+    }
+  ]
+}
+
+exit_status:0

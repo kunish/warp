@@ -1,0 +1,15 @@
+$ target/debug/warpctrl --output-format json drive object create --type prompt --content warpctrl-disposable-verification
+{
+  "audit": {
+    "action": "drive.object.create",
+    "authenticated_user_subject": "BaLlFiT7uiVZ21rvqorhMPwz1oE2",
+    "permission_category": "mutate_underlying_data"
+  },
+  "object": {
+    "id": "Client-e4ff9be5-708b-42ba-94f5-838ee66a4899",
+    "name": "Untitled Prompt",
+    "object_type": "prompt"
+  }
+}
+
+exit_status:0

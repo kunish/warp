@@ -1,0 +1,15 @@
+$ target/debug/warpctrl --output-format json drive object create --type notebook --content-file /workspace/warp-control-cli-verification/notebook-insert-content.json
+{
+  "audit": {
+    "action": "drive.object.create",
+    "authenticated_user_subject": "BaLlFiT7uiVZ21rvqorhMPwz1oE2",
+    "permission_category": "mutate_underlying_data"
+  },
+  "object": {
+    "id": "Client-3d61a918-bb5d-4c0d-9982-27ae456f11bd",
+    "name": "warpctrl disposable verification insert notebook",
+    "object_type": "notebook"
+  }
+}
+
+exit_status:0

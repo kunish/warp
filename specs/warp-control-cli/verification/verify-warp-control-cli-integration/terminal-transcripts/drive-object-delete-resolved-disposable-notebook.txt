@@ -1,0 +1,15 @@
+$ target/debug/warpctrl --output-format json drive object delete B0fNAwxPmglG3UDoTrHiRy
+{
+  "audit": {
+    "action": "drive.object.delete",
+    "authenticated_user_subject": "BaLlFiT7uiVZ21rvqorhMPwz1oE2",
+    "permission_category": "mutate_underlying_data"
+  },
+  "object": {
+    "id": "B0fNAwxPmglG3UDoTrHiRy",
+    "name": "warpctrl disposable verification notebook",
+    "object_type": "notebook"
+  }
+}
+
+exit_status:0

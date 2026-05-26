@@ -1,0 +1,10 @@
+$ target/debug/warpctrl --output-format json drive object insert drv_dummy_verification_id --target {}
+{
+  "ok": false,
+  "error": {
+    "code": "stale_target",
+    "message": "drive.object.insert could not resolve the requested Drive object id"
+  }
+}
+
+exit_status:1

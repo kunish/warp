@@ -1,0 +1,15 @@
+$ target/debug/warpctrl --output-format json drive object insert CmblvfmFq8YjsPcxMydEEs --window-id 0
+{
+  "audit": {
+    "action": "drive.object.insert",
+    "authenticated_user_subject": "BaLlFiT7uiVZ21rvqorhMPwz1oE2",
+    "permission_category": "mutate_underlying_data"
+  },
+  "object": {
+    "id": "CmblvfmFq8YjsPcxMydEEs",
+    "name": "warpctrl disposable verification insert notebook",
+    "object_type": "notebook"
+  }
+}
+
+exit_status:0

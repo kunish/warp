@@ -1,0 +1,15 @@
+$ target/debug/warpctrl --output-format json drive object update RNqMbKhmd80wmqLCSzscbe --content-file /workspace/warp-control-cli-verification/prompt-update-content.json
+{
+  "audit": {
+    "action": "drive.object.update",
+    "authenticated_user_subject": "BaLlFiT7uiVZ21rvqorhMPwz1oE2",
+    "permission_category": "mutate_underlying_data"
+  },
+  "object": {
+    "id": "RNqMbKhmd80wmqLCSzscbe",
+    "name": "warpctrl disposable verification prompt updated",
+    "object_type": "prompt"
+  }
+}
+
+exit_status:0

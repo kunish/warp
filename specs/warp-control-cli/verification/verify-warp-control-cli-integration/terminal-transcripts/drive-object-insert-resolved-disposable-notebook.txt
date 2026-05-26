@@ -1,0 +1,10 @@
+$ target/debug/warpctrl --output-format json drive object insert B0fNAwxPmglG3UDoTrHiRy
+{
+  "ok": false,
+  "error": {
+    "code": "missing_target",
+    "message": "drive.object.insert requires an active Warp window"
+  }
+}
+
+exit_status:1

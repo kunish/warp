@@ -1,0 +1,10 @@
+$ target/debug/warpctrl --output-format json drive object delete Client-028c32a2-12d3-499c-a0ec-234d5f9a82fd
+{
+  "ok": false,
+  "error": {
+    "code": "stale_target",
+    "message": "drive.object.delete could not resolve the requested Drive object id"
+  }
+}
+
+exit_status:1
