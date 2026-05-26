@@ -1,0 +1,24 @@
+command: $WARPCTRL --output-format json capability inspect auth.status
+argv: ["/workspace/warp/target/debug/warpctrl", "--output-format", "json", "capability", "inspect", "auth.status"]
+started_at: 2026-05-26T21:03:00.995522+00:00
+exit_code: 0
+
+{
+  "kind": "auth.status",
+  "name": "auth.status",
+  "implementation_status": "stub",
+  "risk_tier": "read_only_metadata",
+  "state_data_category": "metadata_read",
+  "requires_authenticated_user": false,
+  "authenticated_user": {
+    "required": false
+  },
+  "allowed_invocation_contexts": [
+    "inside_warp",
+    "outside_warp"
+  ],
+  "permission_category": "read_metadata",
+  "target_scope": "auth",
+  "parameter_spec": "none",
+  "result_spec": "auth_status"
+}

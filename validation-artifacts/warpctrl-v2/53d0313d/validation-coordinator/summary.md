@@ -1,0 +1,144 @@
+# Warp Control CLI validation summary
+
+- Agent: `validation-coordinator`
+- Exact SHA: `53d0313df1f712cf98b1c53e9272c588141da350`
+- Verified HEAD: `53d0313df1f712cf98b1c53e9272c588141da350`
+- Artifact branch: `zach/warpctrl-validation-artifacts/53d0313d/validation-coordinator`
+- Build command: `CARGO_BUILD_JOBS=2 cargo build -p warp --bin dev --bin warpctrl --features warp_control_cli`
+- Runtime flag: `FeatureFlag::WarpControlCli enabled by dev-channel DOGFOOD_FLAGS at runtime`
+- `$WARPCTRL`: `/workspace/warp/target/debug/warpctrl`
+
+## Results
+- Required command cases: 12 pass, 0 fail, 0 skip
+- Additional validation checks: 0 pass, 1 fail, 0 skip
+- Overall: 12 pass, 1 fail, 0 skip
+
+## Blockers
+- Implemented catalog contains actions that do not have a corresponding standalone parser command.
+- Implemented actions without reachable standalone CLI command (43):
+  - `window.create`
+  - `window.focus`
+  - `window.close`
+  - `tab.activate`
+  - `tab.move`
+  - `tab.close`
+  - `pane.split`
+  - `pane.focus`
+  - `pane.navigate`
+  - `pane.resize`
+  - `pane.maximize`
+  - `pane.unmaximize`
+  - `pane.close`
+  - `session.activate`
+  - `session.previous`
+  - `session.next`
+  - `session.reopen_closed`
+  - `input.insert`
+  - `input.replace`
+  - `input.clear`
+  - `input.mode.set`
+  - `surface.settings.open`
+  - `surface.command_palette.open`
+  - `surface.command_search.open`
+  - `surface.warp_drive.open`
+  - `surface.warp_drive.toggle`
+  - `surface.resource_center.toggle`
+  - `surface.ai_assistant.toggle`
+  - `surface.code_review.toggle`
+  - `surface.left_panel.toggle`
+  - `surface.right_panel.toggle`
+  - `surface.vertical_tabs.toggle`
+  - `file.open`
+  - `project.open`
+  - `drive.open`
+  - `drive.notebook.open`
+  - `drive.env_var_collection.open`
+  - `drive.object.share.open`
+  - `drive.object.create`
+  - `drive.object.update`
+  - `drive.object.delete`
+  - `drive.object.insert`
+  - `drive.object.share_to_team`
+
+## Required commands executed
+- `$WARPCTRL --help` — pass, exit 0, screenshot `screenshots/001__outside-warp__help__top_help__terminal.png`, log `logs/001__outside-warp__help__top_help.log`
+- `$WARPCTRL completions bash` — pass, exit 0, screenshot `screenshots/002__outside-warp__completions__bash__terminal.png`, log `logs/002__outside-warp__completions__bash.log`
+- `$WARPCTRL completions zsh` — pass, exit 0, screenshot `screenshots/003__outside-warp__completions__zsh__terminal.png`, log `logs/003__outside-warp__completions__zsh.log`
+- `$WARPCTRL --output-format json action list --implemented-only` — pass, exit 0, screenshot `screenshots/004__outside-warp__action__list_implemented_only__terminal.png`, log `logs/004__outside-warp__action__list_implemented_only.log`
+- `$WARPCTRL --output-format json action list --stubs-only` — pass, exit 0, screenshot `screenshots/005__outside-warp__action__list_stubs_only__terminal.png`, log `logs/005__outside-warp__action__list_stubs_only.log`
+- `$WARPCTRL --output-format json action inspect tab.create` — pass, exit 0, screenshot `screenshots/006__outside-warp__action__inspect_tab_create__terminal.png`, log `logs/006__outside-warp__action__inspect_tab_create.log`
+- `$WARPCTRL --output-format json action inspect input.run` — pass, exit 0, screenshot `screenshots/007__outside-warp__action__inspect_input_run__terminal.png`, log `logs/007__outside-warp__action__inspect_input_run.log`
+- `$WARPCTRL --output-format json action inspect drive.workflow.run` — pass, exit 0, screenshot `screenshots/008__outside-warp__action__inspect_drive_workflow_run__terminal.png`, log `logs/008__outside-warp__action__inspect_drive_workflow_run.log`
+- `$WARPCTRL --output-format json action inspect auth.api_key.set` — pass, exit 1, screenshot `screenshots/009__outside-warp__action__inspect_auth_api_key_set__terminal.png`, log `logs/009__outside-warp__action__inspect_auth_api_key_set.log`
+- `$WARPCTRL --output-format json capability list --implemented-only` — pass, exit 0, screenshot `screenshots/010__outside-warp__capability__list_implemented_only__terminal.png`, log `logs/010__outside-warp__capability__list_implemented_only.log`
+- `$WARPCTRL --output-format json capability inspect tab.create` — pass, exit 0, screenshot `screenshots/011__outside-warp__capability__inspect_tab_create__terminal.png`, log `logs/011__outside-warp__capability__inspect_tab_create.log`
+- `$WARPCTRL --output-format json capability inspect auth.status` — pass, exit 0, screenshot `screenshots/012__outside-warp__capability__inspect_auth_status__terminal.png`, log `logs/012__outside-warp__capability__inspect_auth_status.log`
+
+## Commands not executed
+- None
+
+## Screenshots
+- `screenshots/000__launch__app__initial_ui.png`
+- `screenshots/001__outside-warp__help__top_help__terminal.png`
+- `screenshots/002__outside-warp__completions__bash__terminal.png`
+- `screenshots/003__outside-warp__completions__zsh__terminal.png`
+- `screenshots/004__outside-warp__action__list_implemented_only__terminal.png`
+- `screenshots/005__outside-warp__action__list_stubs_only__terminal.png`
+- `screenshots/006__outside-warp__action__inspect_tab_create__terminal.png`
+- `screenshots/007__outside-warp__action__inspect_input_run__terminal.png`
+- `screenshots/008__outside-warp__action__inspect_drive_workflow_run__terminal.png`
+- `screenshots/009__outside-warp__action__inspect_auth_api_key_set__terminal.png`
+- `screenshots/010__outside-warp__capability__list_implemented_only__terminal.png`
+- `screenshots/011__outside-warp__capability__inspect_tab_create__terminal.png`
+- `screenshots/012__outside-warp__capability__inspect_auth_status__terminal.png`
+
+## Logs
+- `logs/001__outside-warp__help__top_help.log`
+- `logs/001__outside-warp__help__top_help.render_error.log`
+- `logs/001__outside-warp__help__top_help.terminal.txt`
+- `logs/002__outside-warp__completions__bash.log`
+- `logs/002__outside-warp__completions__bash.render_error.log`
+- `logs/002__outside-warp__completions__bash.terminal.columns.txt`
+- `logs/002__outside-warp__completions__bash.terminal.txt`
+- `logs/003__outside-warp__completions__zsh.log`
+- `logs/003__outside-warp__completions__zsh.render_error.log`
+- `logs/003__outside-warp__completions__zsh.terminal.txt`
+- `logs/004__outside-warp__action__list_implemented_only.log`
+- `logs/004__outside-warp__action__list_implemented_only.render_error.log`
+- `logs/004__outside-warp__action__list_implemented_only.terminal.txt`
+- `logs/005__outside-warp__action__list_stubs_only.log`
+- `logs/005__outside-warp__action__list_stubs_only.render_error.log`
+- `logs/005__outside-warp__action__list_stubs_only.terminal.txt`
+- `logs/006__outside-warp__action__inspect_tab_create.log`
+- `logs/006__outside-warp__action__inspect_tab_create.render_error.log`
+- `logs/006__outside-warp__action__inspect_tab_create.terminal.txt`
+- `logs/007__outside-warp__action__inspect_input_run.log`
+- `logs/007__outside-warp__action__inspect_input_run.render_error.log`
+- `logs/007__outside-warp__action__inspect_input_run.terminal.txt`
+- `logs/008__outside-warp__action__inspect_drive_workflow_run.log`
+- `logs/008__outside-warp__action__inspect_drive_workflow_run.render_error.log`
+- `logs/008__outside-warp__action__inspect_drive_workflow_run.terminal.txt`
+- `logs/009__outside-warp__action__inspect_auth_api_key_set.log`
+- `logs/009__outside-warp__action__inspect_auth_api_key_set.render_error.log`
+- `logs/009__outside-warp__action__inspect_auth_api_key_set.terminal.txt`
+- `logs/010__outside-warp__capability__list_implemented_only.log`
+- `logs/010__outside-warp__capability__list_implemented_only.render_error.log`
+- `logs/010__outside-warp__capability__list_implemented_only.terminal.txt`
+- `logs/011__outside-warp__capability__inspect_tab_create.log`
+- `logs/011__outside-warp__capability__inspect_tab_create.render_error.log`
+- `logs/011__outside-warp__capability__inspect_tab_create.terminal.txt`
+- `logs/012__outside-warp__capability__inspect_auth_status.log`
+- `logs/012__outside-warp__capability__inspect_auth_status.render_error.log`
+- `logs/012__outside-warp__capability__inspect_auth_status.terminal.txt`
+- `logs/app-launch.stderr.log`
+- `logs/build.log`
+- `logs/case_results_partial.json`
+- `logs/catalog_to_cli_gap_check.json`
+- `logs/local_control_discovery_record.json`
+- `logs/openbox.log`
+- `logs/warp_dev.log`
+- `logs/warp_dev.prompt_chips.log`
+- `logs/xvfb-30k-terminal.log`
+- `logs/xvfb-tall-terminal.log`
+- `logs/xvfb-terminal-screenshots.log`
+- `logs/xvfb.log`

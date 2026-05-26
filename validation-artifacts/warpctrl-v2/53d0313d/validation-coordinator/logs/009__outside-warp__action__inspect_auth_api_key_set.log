@@ -1,0 +1,13 @@
+command: $WARPCTRL --output-format json action inspect auth.api_key.set
+argv: ["/workspace/warp/target/debug/warpctrl", "--output-format", "json", "action", "inspect", "auth.api_key.set"]
+started_at: 2026-05-26T21:03:00.387650+00:00
+exit_code: 1
+
+{
+  "ok": false,
+  "error": {
+    "code": "not_allowlisted",
+    "message": "auth.api_key.set is not in the public warpctrl action catalog",
+    "details": "Use `warpctrl action list` to inspect allowlisted actions."
+  }
+}
