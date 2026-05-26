@@ -85,3 +85,4 @@ Run the narrowest useful checks first:
 If a command is unavailable in a cloud shard, report it as skipped with the exact toolchain or environment blocker.
 # Fan-out handoff
 This shard establishes the dependency gate for other implementation shards. Other shards should port handlers and tests to the canonical names above, use `ActionMetadata` for permission enforcement, and avoid adding handlers for excluded surfaces.
+Implementation branches must treat `specs/warp-control-cli/PRODUCT.md`, `TECH.md`, `SECURITY.md`, and `README.md` as contract-owned after this branch. If any spec correction is needed, land it on the contract/spec branch first, then propagate the resulting spec files forward unchanged.
