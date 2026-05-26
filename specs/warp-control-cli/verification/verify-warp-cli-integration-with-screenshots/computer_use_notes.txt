@@ -1,0 +1,104 @@
+Warp Control CLI Verification Notes
+====================================
+
+Environment Setup:
+- App binary: /workspace/warp/target/debug/warp
+- CLI binary: /workspace/warp/target/debug/warpctrl
+- Had to install libxkbcommon-x11-0 (libxkbcommon-x11.so.0) for Warp to launch
+- Launched with: cd /workspace/warp && PATH=/root/.cargo/bin:$PATH XDG_CONFIG_HOME=/tmp/warpctrl-verify-config XDG_DATA_HOME=/tmp/warpctrl-verify-data XDG_CACHE_HOME=/tmp/warpctrl-verify-cache DISPLAY=:99 target/debug/warp --api-key "$STAGING_USER_WARP_API_KEY"
+- Note: XDG_STATE_HOME was NOT overridden, so both app and warpctrl use /root/.local/state/
+- warpctrl commands were run without custom XDG vars since the socket is in the default state dir
+- External xterm was used for warpctrl invocations via script files to show command+output
+
+App Launch:
+- App launched successfully after installing libxkbcommon-x11-0
+- "What's new" popup and "Introducing vertical tabs" notification appeared and were dismissed
+- A usable terminal/workspace was visible
+
+Step 3 - Default-off behavior:
+- Command: warpctrl --output-format json input insert "DEFAULT_OFF_SHOULD_NOT_STAGE"
+- Output: {"ok": false, "error": {"code": "local_control_disabled", "message": "outside-Warp local control credential broker is disabled for this instance"}}
+- Exit code: 1
+- App state: No text was inserted into the Warp input buffer (correctly denied)
+- Screenshots: 01_default_off_input_insert_terminal.png, 02_default_off_app_after_denial.png
+
+Step 4 - Settings toggles:
+- Opened Settings > Scripting page via UI
+- Before: "Warp control outside Warp" toggle was OFF (grey)
+- Toggled ON: "Warp control outside Warp" (turned blue)
+- Sub-options appeared: Allow metadata reads, Allow underlying data reads, Allow app-state mutations, Allow metadata/configuration mutations, Allow underlying data mutations
+- Toggled ON: "Allow app-state mutations" (turned blue)
+- Screenshots: 03_scripting_settings_before.png, 04_scripting_settings_after.png
+
+Step 6 - input insert:
+- Command: warpctrl --output-format json input insert "printf WARPCTRL_INSERT_SHOULD_NOT_EXECUTE"
+- Output: {"cursor_offset": 41, "session_id": "177976052228114", "text": "printf WARPCTRL_INSERT_SHOULD_NOT_EXECUTE"}
+- Exit code: 0
+- App state: Input buffer shows "printf WARPCTRL_INSERT_SHOULD_NOT_EXECUTE" - text staged but NOT executed
+- Note: An accidental agent invocation occurred during testing due to focus issues with xterm
+- Screenshots: 06_input_insert_terminal.png, 07_app_after_input_insert.png
+
+Step 7 - input replace:
+- Command: warpctrl --output-format json input replace "echo WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE"
+- Output: {"cursor_offset": 40, "session_id": "177976052228114", "text": "echo WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE"}
+- Exit code: 0
+- App state: Input buffer replaced with "echo WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE" - NOT executed
+- Screenshots: 08_input_replace_terminal.png, 09_app_after_input_replace.png
+
+Step 8 - input mode set agent:
+- Command: warpctrl --output-format json input mode set agent
+- Output: {"cursor_offset": 39, "session_id": "177976052228114", "text": "echo WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE"}
+- Exit code: 0
+- App state: Switched to agent mode - input shows text without "!" prefix, agent conversation UI visible
+- Screenshots: 10_input_mode_set_agent_terminal.png, 11_app_after_mode_agent.png
+
+Step 9 - input mode set terminal:
+- Command: warpctrl --output-format json input mode set terminal
+- Output: {"cursor_offset": 39, "session_id": "177976052228114", "text": "echo WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE"}
+- Exit code: 0
+- App state: Switched back to terminal mode - input shows "!" prefix, terminal UI visible
+- Screenshots: 12_input_mode_set_terminal_terminal.png, 13_app_after_mode_terminal.png
+
+Step 10 - input clear:
+- Command: warpctrl --output-format json input clear
+- Output: {"cursor_offset": 0, "session_id": "177976052228114", "text": ""}
+- Exit code: 0
+- App state: Input buffer cleared - shows empty input with "Run commands" placeholder
+- Screenshots: 14_input_clear_terminal.png, 15_app_after_input_clear.png
+
+Step 11 - Create second session:
+- Created new terminal session via UI (+ button > Terminal)
+- Two sessions visible in sidebar: original and "New session"
+- Screenshot: 16_app_two_sessions_before_previous.png
+
+Step 12 - session previous:
+- Command: warpctrl --output-format json session previous
+- Output: {"action": "session.previous", "active_tab_index": 0, "previous_tab_index": 1, "tab_count": 3, "window_id": "0"}
+- Exit code: 0
+- App state: Switched to previous (first) session
+- Note: tab_count is 3 (includes Settings as a tab)
+- Screenshots: 17_session_previous_terminal.png, 18_app_after_session_previous.png
+
+Step 13 - session next:
+- Command: warpctrl --output-format json session next
+- Output: {"action": "session.next", "active_tab_index": 1, "previous_tab_index": 0, "tab_count": 3, "window_id": "0"}
+- Exit code: 0
+- App state: Switched to next (second) session - shows "New session" terminal
+- Screenshots: 19_session_next_terminal.png, 20_app_after_session_next.png
+
+Step 14 - Close session:
+- Closed "New session" tab via right-click > Close tab
+- Only one session remains in sidebar
+- Screenshot: 21_app_after_closing_session_before_reopen.png
+
+Step 15 - session reopen-closed:
+- Command: warpctrl --output-format json session reopen-closed
+- Output: {"action": "session.reopen_closed", "handled": true, "window_id": "0"}
+- Exit code: 0
+- App state: Closed session was reopened - new terminal visible
+- Screenshots: 22_session_reopen_closed_terminal.png, 23_app_after_session_reopen_closed.png
+
+Known issues/observations:
+- The warpctrl "input insert" initially returned "missing_target" error when run from xterm with custom XDG vars. Fixed by running without XDG overrides (socket in default state dir).
+- An accidental agent invocation occurred when typing into xterm while Warp had focus. Resolved by using script-based xterm invocations.
+- No shell command output appeared in Warp as a result of staging commands (commands were correctly staged, not executed).

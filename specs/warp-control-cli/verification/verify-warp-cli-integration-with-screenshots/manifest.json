@@ -1,0 +1,178 @@
+{
+  "agent_name": "verify-warp-cli-integration-with-screenshots",
+  "repository": "warpdotdev/warp",
+  "branch": "origin/zach/warp-cli-integration-fanin",
+  "commit": "492fde34",
+  "working_directory": "/workspace/warp",
+  "build_commands": [
+    "CARGO_BUILD_JOBS=1 cargo build -p warp --bin warpctrl --features warp/warp_control_cli",
+    "CARGO_BUILD_JOBS=1 cargo build -p warp --bin warp --features warp/warp_control_cli"
+  ],
+  "build_result": "passed",
+  "app_launch": {
+    "binary": "/workspace/warp/target/debug/warp",
+    "method": "GUI launch under DISPLAY=:99 with PATH including /root/.cargo/bin and --api-key \"$STAGING_USER_WARP_API_KEY\"",
+    "result": "launched successfully after installing missing runtime library libxkbcommon-x11-0",
+    "initial_app_screenshot": "screenshots/00_initial_app.png"
+  },
+  "permission_configuration": {
+    "invocation_context": "outside-Warp external xterm",
+    "required_permission_category": "LocalControlPermissionCategory::AppStateMutations / ScriptingScope::LocalControlMutateAppState",
+    "default_off_observed": true,
+    "enabled_via_ui": true,
+    "settings_before_screenshot": "screenshots/03_scripting_settings_before.png",
+    "settings_after_screenshot": "screenshots/04_scripting_settings_after.png",
+    "enabled_toggles": [
+      "Warp control outside Warp",
+      "Allow app-state mutations"
+    ]
+  },
+  "commands": [
+    {
+      "command": "target/debug/warpctrl --output-format json input insert \"DEFAULT_OFF_SHOULD_NOT_STAGE\"",
+      "action": "input.insert",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Denied before outside-Warp control is enabled; input buffer remains unchanged.",
+      "actual_result": "Exited 1 with JSON error code local_control_disabled and message \"outside-Warp local control credential broker is disabled for this instance\"; app input remained empty.",
+      "terminal_screenshot_path": "screenshots/01_default_off_input_insert_terminal.png",
+      "ui_screenshot_path": "screenshots/02_default_off_app_after_denial.png",
+      "exit_code": 1
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json input insert \"printf WARPCTRL_INSERT_SHOULD_NOT_EXECUTE\"",
+      "action": "input.insert",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Text is staged in the selected input buffer and not submitted to the shell.",
+      "actual_result": "Exited 0 with JSON containing cursor_offset 41, session_id 177976052228114, and text \"printf WARPCTRL_INSERT_SHOULD_NOT_EXECUTE\"; UI showed the text staged and no shell output for WARPCTRL_INSERT_SHOULD_NOT_EXECUTE appeared.",
+      "terminal_screenshot_path": "screenshots/06_input_insert_terminal.png",
+      "ui_screenshot_path": "screenshots/07_app_after_input_insert.png",
+      "before_ui_screenshot_path": "screenshots/05_app_before_input_insert.png",
+      "exit_code": 0
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json input replace \"echo WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE\"",
+      "action": "input.replace",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Selected input buffer is replaced and not submitted to the shell.",
+      "actual_result": "Exited 0 with JSON containing cursor_offset 40, session_id 177976052228114, and text \"echo WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE\"; UI showed replaced staged text and no shell output for WARPCTRL_REPLACE_SHOULD_NOT_EXECUTE appeared.",
+      "terminal_screenshot_path": "screenshots/08_input_replace_terminal.png",
+      "ui_screenshot_path": "screenshots/09_app_after_input_replace.png",
+      "exit_code": 0
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json input mode set agent",
+      "action": "input.mode.set",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Selected input switches to agent mode without submitting staged text.",
+      "actual_result": "Exited 0 with JSON containing cursor_offset 39 and the existing staged text; UI switched to agent mode with agent UI affordances visible and no command executed.",
+      "terminal_screenshot_path": "screenshots/10_input_mode_set_agent_terminal.png",
+      "ui_screenshot_path": "screenshots/11_app_after_mode_agent.png",
+      "exit_code": 0
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json input mode set terminal",
+      "action": "input.mode.set",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Selected input switches back to terminal mode without submitting staged text.",
+      "actual_result": "Exited 0 with JSON containing cursor_offset 39 and the existing staged text; UI switched back to terminal mode and no command executed.",
+      "terminal_screenshot_path": "screenshots/12_input_mode_set_terminal_terminal.png",
+      "ui_screenshot_path": "screenshots/13_app_after_mode_terminal.png",
+      "exit_code": 0
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json input clear",
+      "action": "input.clear",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Selected input buffer is cleared without command execution.",
+      "actual_result": "Exited 0 with JSON containing cursor_offset 0 and empty text; UI showed an empty input with Run commands placeholder.",
+      "terminal_screenshot_path": "screenshots/14_input_clear_terminal.png",
+      "ui_screenshot_path": "screenshots/15_app_after_input_clear.png",
+      "exit_code": 0
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json session previous",
+      "action": "session.previous",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Active session/tab cycles to the previous session.",
+      "actual_result": "Exited 0 with JSON action session.previous, previous_tab_index 1, active_tab_index 0, tab_count 3, window_id 0; UI switched to the previous session.",
+      "terminal_screenshot_path": "screenshots/17_session_previous_terminal.png",
+      "ui_screenshot_path": "screenshots/18_app_after_session_previous.png",
+      "before_ui_screenshot_path": "screenshots/16_app_two_sessions_before_previous.png",
+      "exit_code": 0
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json session next",
+      "action": "session.next",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Active session/tab cycles to the next session.",
+      "actual_result": "Exited 0 with JSON action session.next, previous_tab_index 0, active_tab_index 1, tab_count 3, window_id 0; UI switched to the next session.",
+      "terminal_screenshot_path": "screenshots/19_session_next_terminal.png",
+      "ui_screenshot_path": "screenshots/20_app_after_session_next.png",
+      "exit_code": 0
+    },
+    {
+      "command": "target/debug/warpctrl --output-format json session reopen-closed",
+      "action": "session.reopen_closed",
+      "invocation_context": "outside-Warp external xterm",
+      "required_permission_category": "AppStateMutations",
+      "expected_result": "Most recently closed session is reopened.",
+      "actual_result": "Exited 0 with JSON action session.reopen_closed, handled true, window_id 0; UI showed the closed session reopened.",
+      "terminal_screenshot_path": "screenshots/22_session_reopen_closed_terminal.png",
+      "ui_screenshot_path": "screenshots/23_app_after_session_reopen_closed.png",
+      "before_ui_screenshot_path": "screenshots/21_app_after_closing_session_before_reopen.png",
+      "exit_code": 0
+    }
+  ],
+  "non_warpctrl_ui_setup": [
+    {
+      "step": "Created second session/tab through the Warp UI",
+      "screenshot_path": "screenshots/16_app_two_sessions_before_previous.png"
+    },
+    {
+      "step": "Closed one session/tab through the Warp UI before reopen-closed",
+      "screenshot_path": "screenshots/21_app_after_closing_session_before_reopen.png"
+    }
+  ],
+  "skipped_cases": [],
+  "blockers_or_notes": [
+    "Installed libxkbcommon-x11-0 after the first app launch attempt reported the missing libxkbcommon-x11.so.0 runtime library.",
+    "warpctrl had to run without custom XDG_* overrides so it used the same default local-control socket/state location as the app.",
+    "No input.run invocation was performed; staging commands showed no shell command output from the staged text.",
+    "A transient accidental agent invocation occurred during manual focus handling; final recorded command screenshots used external xterm/script-based invocations and the app state was recovered before continuing."
+  ],
+  "screenshots": [
+    "00_initial_app.png",
+    "01_default_off_input_insert_terminal.png",
+    "02_default_off_app_after_denial.png",
+    "03_scripting_settings_before.png",
+    "04_scripting_settings_after.png",
+    "05_app_before_input_insert.png",
+    "06_input_insert_terminal.png",
+    "07_app_after_input_insert.png",
+    "08_input_replace_terminal.png",
+    "09_app_after_input_replace.png",
+    "10_input_mode_set_agent_terminal.png",
+    "11_app_after_mode_agent.png",
+    "12_input_mode_set_terminal_terminal.png",
+    "13_app_after_mode_terminal.png",
+    "14_input_clear_terminal.png",
+    "15_app_after_input_clear.png",
+    "16_app_two_sessions_before_previous.png",
+    "17_session_previous_terminal.png",
+    "18_app_after_session_previous.png",
+    "19_session_next_terminal.png",
+    "20_app_after_session_next.png",
+    "21_app_after_closing_session_before_reopen.png",
+    "22_session_reopen_closed_terminal.png",
+    "23_app_after_session_reopen_closed.png"
+  ],
+  "notes_file": "computer_use_notes.txt"
+}
