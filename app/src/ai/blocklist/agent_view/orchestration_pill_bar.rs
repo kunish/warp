@@ -622,29 +622,55 @@ impl OrchestrationPillBar {
     /// built for (used to key the shared horizontal scroll handle), or
     /// `None` when nothing should render.
     fn pill_specs(&self, app: &AppContext) -> Option<(AIConversationId, Vec<PillSpec>)> {
-        let active_id = self
+        log::info!("[ORCH-RESTORE-DBG] pill_specs called");
+        let Some(active_id) = self
             .agent_view_controller
             .as_ref(app)
             .agent_view_state()
-            .active_conversation_id()?;
+            .active_conversation_id()
+        else {
+            log::info!("[ORCH-RESTORE-DBG] pill_specs returning None: active_conversation_id=None");
+            return None;
+        };
         let history = BlocklistAIHistoryModel::as_ref(app);
-        let active_conversation = history.conversation(&active_id)?;
+        let Some(active_conversation) = history.conversation(&active_id) else {
+            log::info!(
+                "[ORCH-RESTORE-DBG] pill_specs returning None: active_conversation not in conversations_by_id (id={active_id})",
+            );
+            return None;
+        };
 
         // Anchor the bar on the orchestrator root regardless of which
         // conversation is active so navigation between siblings is symmetric.
         let orchestrator_id = parent_conversation_id(active_conversation, app).unwrap_or(active_id);
-        let orchestrator = history.conversation(&orchestrator_id)?;
+        log::info!(
+            "[ORCH-RESTORE-DBG] pill_specs: active_id={active_id} orchestrator_id={orchestrator_id}",
+        );
+        let Some(orchestrator) = history.conversation(&orchestrator_id) else {
+            log::info!(
+                "[ORCH-RESTORE-DBG] pill_specs returning None: orchestrator not in conversations_by_id (id={orchestrator_id})",
+            );
+            return None;
+        };
 
         // Walk the full descendant tree in pre-order, preserving each
         // parent's child registration order so nested branches stay
         // contiguous and grandchildren remain visible in the row.
-        let children: Vec<_> = descendant_conversation_ids_in_spawn_order(history, orchestrator_id)
+        let descendant_ids = descendant_conversation_ids_in_spawn_order(history, orchestrator_id);
+        let descendant_count = descendant_ids.len();
+        let children: Vec<_> = descendant_ids
             .into_iter()
             .filter_map(|id| history.conversation(&id))
             .collect();
+        log::info!(
+            "[ORCH-RESTORE-DBG] pill_specs: orchestrator_id={orchestrator_id} \
+             descendant_ids_count={descendant_count} resolved_children={count}",
+            count = children.len(),
+        );
 
         // Nothing to show if the orchestrator has no children yet.
         if children.is_empty() {
+            log::info!("[ORCH-RESTORE-DBG] pill_specs returning None: children.is_empty()");
             return None;
         }
         let appearance = Appearance::as_ref(app);
@@ -694,6 +720,10 @@ impl OrchestrationPillBar {
             });
         }
 
+        log::info!(
+            "[ORCH-RESTORE-DBG] pill_specs returning {n} pills",
+            n = specs.len(),
+        );
         Some((orchestrator_id, specs))
     }
 }

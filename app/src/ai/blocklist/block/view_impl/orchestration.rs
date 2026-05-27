@@ -98,11 +98,26 @@ fn participant_for_agent_id(
                 orchestrator_agent_id,
                 Some(agent_id),
             );
+        } else {
+            log::info!(
+                "[ORCH-RESTORE-DBG] participant_for_agent_id: agent_id={agent_id} \
+                 resolved conversation_id={conversation_id} but not in conversations_by_id; \
+                 falling through",
+            );
         }
+    } else {
+        log::info!(
+            "[ORCH-RESTORE-DBG] participant_for_agent_id: agent_id={agent_id} \
+             not in agent_id_to_conversation_id",
+        );
     }
     if orchestrator_agent_id.is_some_and(|id| id == agent_id) {
         return OrchestrationParticipant::orchestrator();
     }
+    log::info!(
+        "[ORCH-RESTORE-DBG] participant_for_agent_id returning Unknown for agent_id={agent_id} \
+         orchestrator_agent_id={orchestrator_agent_id:?}",
+    );
     OrchestrationParticipant::unknown_child()
 }
 

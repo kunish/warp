@@ -3183,32 +3183,62 @@ impl PaneGroup {
             .child_conversation_ids_of(&parent_conversation_id)
             .to_vec();
 
+        log::info!(
+            "[ORCH-RESTORE-DBG] restore_missing_child_agent_panes_for_parent: \
+             parent={parent_conversation_id} parent_pane={parent_pane_id:?} child_ids={child_ids:?}",
+        );
+
         for child_id in child_ids {
-            if self
+            let already_tracked = self
                 .child_agent_panes
                 .get(&child_id)
-                .is_some_and(|pane_id| self.has_pane_id(*pane_id))
-            {
+                .is_some_and(|pane_id| self.has_pane_id(*pane_id));
+            if already_tracked {
+                log::info!(
+                    "[ORCH-RESTORE-DBG] restore_missing_child_agent_panes_for_parent: \
+                     child={child_id} already in child_agent_panes; skipping",
+                );
                 continue;
             }
 
             if self.is_conversation_owned_outside_pane(child_id, parent_pane_id, ctx) {
+                log::info!(
+                    "[ORCH-RESTORE-DBG] restore_missing_child_agent_panes_for_parent: \
+                     child={child_id} owned outside parent pane; skipping",
+                );
                 continue;
             }
 
-            let child_conversation = BlocklistAIHistoryModel::as_ref(ctx)
+            let from_history = BlocklistAIHistoryModel::as_ref(ctx)
                 .conversation(&child_id)
-                .cloned()
-                .or_else(|| {
-                    RestoredAgentConversations::handle(ctx)
-                        .update(ctx, |store, _| store.take_conversation(&child_id))
-                });
+                .cloned();
+            let from_history_present = from_history.is_some();
+            let child_conversation = from_history.or_else(|| {
+                RestoredAgentConversations::handle(ctx)
+                    .update(ctx, |store, _| store.take_conversation(&child_id))
+            });
+            let source = if from_history_present {
+                "history"
+            } else if child_conversation.is_some() {
+                "restored_store"
+            } else {
+                "none"
+            };
+            log::info!(
+                "[ORCH-RESTORE-DBG] restore_missing_child_agent_panes_for_parent: \
+                 child={child_id} conversation_source={source}",
+            );
             let Some(child_conversation) = child_conversation else {
                 log::warn!("Child conversation {child_id:?} not found in memory or restored store");
                 continue;
             };
 
             self.create_hidden_child_agent_pane(child_conversation, parent_pane_id, ctx);
+            log::info!(
+                "[ORCH-RESTORE-DBG] restore_missing_child_agent_panes_for_parent: \
+                 child={child_id} materialized; tracked_pane={:?}",
+                self.child_agent_panes.get(&child_id).copied(),
+            );
         }
     }
 

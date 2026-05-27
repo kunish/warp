@@ -1708,6 +1708,18 @@ pub(crate) fn initialize_app(
         })
         .collect();
     {
+        log::info!(
+            "[ORCH-RESTORE-DBG] flags: OrchestrationV2={ov2} OrchestrationPillBar={opb} \
+             AgentView={av} CloudConversations={cc} HandoffCloudCloud={hcc} \
+             AgentHarness={ah} CloudMode={cm}",
+            ov2 = warp_core::features::FeatureFlag::OrchestrationV2.is_enabled(),
+            opb = warp_core::features::FeatureFlag::OrchestrationPillBar.is_enabled(),
+            av = warp_core::features::FeatureFlag::AgentView.is_enabled(),
+            cc = warp_core::features::FeatureFlag::CloudConversations.is_enabled(),
+            hcc = warp_core::features::FeatureFlag::HandoffCloudCloud.is_enabled(),
+            ah = warp_core::features::FeatureFlag::AgentHarness.is_enabled(),
+            cm = warp_core::features::FeatureFlag::CloudMode.is_enabled(),
+        );
         let conversations = &multi_agent_conversations;
         ctx.add_singleton_model(move |_| BlocklistAIHistoryModel::new(ai_queries, conversations));
     }

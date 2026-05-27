@@ -809,6 +809,23 @@ impl BlocklistAIHistoryModel {
         self.terminal_view_created_at
             .insert(terminal_view_id, Local::now());
 
+        let restore_ids: Vec<(AIConversationId, Option<String>, Option<String>)> = conversations
+            .iter()
+            .map(|c| {
+                (
+                    c.id(),
+                    c.run_id(),
+                    c.agent_name().map(|s| s.to_string()),
+                )
+            })
+            .collect();
+        log::info!(
+            "[ORCH-RESTORE-DBG] restore_conversations entry: terminal_view_id={terminal_view_id:?} \
+             count={count} ids={ids:?}",
+            count = restore_ids.len(),
+            ids = restore_ids,
+        );
+
         let mut conversation_ids = Vec::new();
         for conversation in conversations.into_iter() {
             let conversation_id = conversation.id();
@@ -857,6 +874,14 @@ impl BlocklistAIHistoryModel {
             terminal_view_id,
             conversation_ids,
         });
+
+        log::info!(
+            "[ORCH-RESTORE-DBG] restore_conversations exit: terminal_view_id={terminal_view_id:?} \
+             conversations_by_id_size={conv} agent_id_index_size={aix} server_token_index_size={stx}",
+            conv = self.conversations_by_id.len(),
+            aix = self.agent_id_to_conversation_id.len(),
+            stx = self.server_token_to_conversation_id.len(),
+        );
     }
 
     /// Sets the active conversation ID for a terminal view and transfers ownership

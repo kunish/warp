@@ -476,6 +476,11 @@ impl BlocklistAIHistoryModel {
             conversation_data: Option<AgentConversationData>,
         }
 
+        log::info!(
+            "[ORCH-RESTORE-DBG] initialize_historical_conversations start: input_rows={}",
+            conversations.len(),
+        );
+
         let historical_rows: Vec<_> = conversations
             .iter()
             .sorted_by_key(|c| c.conversation.last_modified_at)
@@ -512,6 +517,25 @@ impl BlocklistAIHistoryModel {
                     }
                 }
 
+                log::info!(
+                    "[ORCH-RESTORE-DBG] row id={conversation_id} parent_id={parent:?} \
+                     parent_agent_id={paid:?} run_id={run:?} agent_name={name:?} \
+                     is_remote_child={remote:?} num_tasks={tasks} root_task_is_optimistic={opt:?}",
+                    parent = conversation_data
+                        .as_ref()
+                        .and_then(|d| d.parent_conversation_id.as_deref()),
+                    paid = conversation_data
+                        .as_ref()
+                        .and_then(|d| d.parent_agent_id.as_deref()),
+                    run = conversation_data.as_ref().and_then(|d| d.run_id.as_deref()),
+                    name = conversation_data.as_ref().and_then(|d| d.agent_name.as_deref()),
+                    remote = conversation_data.as_ref().map(|d| d.is_remote_child),
+                    tasks = agent_conversation.tasks.len(),
+                    opt = conversation_data
+                        .as_ref()
+                        .and_then(|d| d.root_task_is_optimistic),
+                );
+
                 Some(HistoricalConversationRow {
                     agent_conversation,
                     conversation_id,
@@ -538,6 +562,9 @@ impl BlocklistAIHistoryModel {
                     .as_ref()
                     .and_then(|data| self.resolved_parent_conversation_id_from_persisted_data(data))
                 {
+                    log::info!(
+                        "[ORCH-RESTORE-DBG] eager-hydrating orchestration child {conversation_id} parent={parent_id}",
+                    );
                     self.index_child_conversation(conversation_id, parent_id);
                     // Eagerly hydrate the child conversation into
                     // `conversations_by_id` so the pill bar and orchestration
@@ -552,18 +579,25 @@ impl BlocklistAIHistoryModel {
                     // later when the hidden pane is materialized via
                     // `restore_conversations`. A subsequent `restore_conversations`
                     // call replaces this entry idempotently.
-                    if let Some(child_conversation) =
-                        convert_persisted_conversation_to_ai_conversation_with_metadata(
-                            agent_conversation.clone(),
-                        )
-                    {
-                        self.conversations_by_id
-                            .insert(conversation_id, child_conversation);
-                    } else {
-                        log::warn!(
-                            "Failed to eagerly hydrate orchestration child {conversation_id}; \
-                             pill bar / name resolution will fall back to lazy materialization",
-                        );
+                    match convert_persisted_conversation_to_ai_conversation_with_metadata(
+                        agent_conversation.clone(),
+                    ) {
+                        Some(child_conversation) => {
+                            log::info!(
+                                "[ORCH-RESTORE-DBG] eager-hydrate succeeded for {conversation_id} \
+                                 (in-memory run_id={:?} agent_name={:?})",
+                                child_conversation.run_id(),
+                                child_conversation.agent_name(),
+                            );
+                            self.conversations_by_id
+                                .insert(conversation_id, child_conversation);
+                        }
+                        None => {
+                            log::warn!(
+                                "[ORCH-RESTORE-DBG] eager-hydrate FAILED for orchestration child {conversation_id}; \
+                                 pill bar / name resolution will fall back to lazy materialization",
+                            );
+                        }
                     }
                     return None;
                 }
@@ -685,5 +719,24 @@ impl BlocklistAIHistoryModel {
             })
             .collect();
         self.all_conversations_metadata = collected;
+
+        let children_by_parent_keys: Vec<String> = self
+            .children_by_parent
+            .iter()
+            .map(|(parent_id, children)| format!("{parent_id}=>{}", children.len()))
+            .collect();
+        log::info!(
+            "[ORCH-RESTORE-DBG] init complete: \
+             total_historical_metadata={hist} \
+             conversations_by_id_size={conv} \
+             agent_id_index_size={aix} \
+             server_token_index_size={stx} \
+             children_by_parent={cbp:?}",
+            hist = self.all_conversations_metadata.len(),
+            conv = self.conversations_by_id.len(),
+            aix = self.agent_id_to_conversation_id.len(),
+            stx = self.server_token_to_conversation_id.len(),
+            cbp = children_by_parent_keys,
+        );
     }
 }
