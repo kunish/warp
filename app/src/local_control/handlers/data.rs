@@ -73,14 +73,13 @@ pub(crate) fn list_history(
                 "history.list requires a target terminal session",
             )
         })?;
-    let commands = History::as_ref(ctx)
-        .is_queryable(&session_id)
-        .then(|| {
-            History::as_ref(ctx)
-                .commands_shared(session_id)
-                .unwrap_or_default()
-        })
-        .unwrap_or_default();
+    let commands = if History::as_ref(ctx).is_queryable(&session_id) {
+        History::as_ref(ctx)
+            .commands_shared(session_id)
+            .unwrap_or_default()
+    } else {
+        Default::default()
+    };
     let start_index = params
         .limit
         .and_then(|limit| usize::try_from(limit).ok())
@@ -105,7 +104,7 @@ pub(crate) fn list_blocks(
     ctx: &mut ModelContext<LocalControlBridge>,
 ) -> Result<serde_json::Value, ControlError> {
     validate_block_list_target(target)?;
-    let terminal = target_terminal_view(ctx)?;
+    let terminal = target_terminal_view(ActionKind::BlockList, ctx)?;
     let result = terminal.read(ctx, |view, _| {
         let session_id = resolve_session_selector(
             target.session.as_ref(),
@@ -124,7 +123,7 @@ pub(crate) fn get_block(
     ctx: &mut ModelContext<LocalControlBridge>,
 ) -> Result<serde_json::Value, ControlError> {
     validate_block_get_target(target)?;
-    let terminal = target_terminal_view(ctx)?;
+    let terminal = target_terminal_view(ActionKind::BlockInspect, ctx)?;
     let result = terminal.read(ctx, |view, _| {
         let session_id = resolve_session_selector(
             target.session.as_ref(),
@@ -280,17 +279,20 @@ fn resolve_terminal_in_pane_group(
 }
 
 fn target_terminal_view(
+    action: ActionKind,
     ctx: &mut ModelContext<LocalControlBridge>,
 ) -> Result<ViewHandle<TerminalView>, ControlError> {
-    let window_id =
-        require_active_window_id_for_action(ctx.windows().active_window(), ActionKind::BlockList)?;
+    let window_id = require_active_window_id_for_action(ctx.windows().active_window(), action)?;
     let workspace = ctx
         .views_of_type::<Workspace>(window_id)
         .and_then(|workspaces| workspaces.into_iter().next())
         .ok_or_else(|| {
             ControlError::new(
                 ErrorCode::MissingTarget,
-                "block read requires a workspace in the target window",
+                format!(
+                    "{} requires a workspace in the target window",
+                    action.as_str()
+                ),
             )
         })?;
     workspace
@@ -302,7 +304,7 @@ fn target_terminal_view(
         .ok_or_else(|| {
             ControlError::new(
                 ErrorCode::MissingTarget,
-                "block read requires an active terminal session",
+                format!("{} requires an active terminal session", action.as_str()),
             )
         })
 }
