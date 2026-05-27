@@ -211,9 +211,7 @@ impl DirectoryTabColors {
                 let configured = Path::new(configured_path);
                 match color {
                     DirectoryTabColor::Suppressed => None,
-                    _ => dir
-                        .starts_with(configured)
-                        .then_some((configured, *color)),
+                    _ => dir.starts_with(configured).then_some((configured, *color)),
                 }
             })
             .max_by_key(|(configured, _)| configured.as_os_str().len())

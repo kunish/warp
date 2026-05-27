@@ -107,13 +107,11 @@ impl DetectedRepositories {
             if let Some(ref key) = local_key {
                 if self.repository_roots.contains(key) {
                     if let Some(local_path) = path.to_local_path() {
-                        if let Some(repository) =
-                            CanonicalizedPath::try_from(local_path.as_path())
-                                .ok()
-                                .and_then(|cp| {
-                                    DirectoryWatcher::as_ref(ctx)
-                                        .get_watched_directory_for_path(&cp)
-                                })
+                        if let Some(repository) = CanonicalizedPath::try_from(local_path.as_path())
+                            .ok()
+                            .and_then(|cp| {
+                                DirectoryWatcher::as_ref(ctx).get_watched_directory_for_path(&cp)
+                            })
                         {
                             ctx.emit(DetectedRepositoriesEvent::DetectedGitRepo {
                                 repository: repository.clone(),

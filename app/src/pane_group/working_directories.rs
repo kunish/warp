@@ -495,7 +495,6 @@ impl WorkingDirectoriesModel {
             self.focused_repo.get(&pane_group_id).cloned().flatten();
 
         // Resolve a local path to its detected repository root, or keep the path as-is if no repo is found.
-        // No filesystem I/O — uses the cached repo root store.
         let root_for_path = |path: PathBuf| {
             DetectedRepositories::as_ref(ctx)
                 .get_root_for_path(&LocalOrRemotePath::Local(path.clone()))
@@ -503,7 +502,7 @@ impl WorkingDirectoriesModel {
                 .unwrap_or(path)
         };
 
-        let root_for_local_str = |cwd: &str| -> PathBuf { root_for_path(PathBuf::from(cwd)) };
+        let root_for_local_str = |cwd| root_for_path(PathBuf::from(cwd));
 
         // Split terminal CWDs into local and remote buckets.
         let mut local_terminal_cwds: Vec<(EntityId, String)> = Vec::new();
@@ -622,7 +621,10 @@ impl WorkingDirectoriesModel {
         let mut new_root_to_terminal: HashMap<LocalOrRemotePath, EntityId> = local_terminal_cwds
             .iter()
             .map(|(terminal_id, cwd)| {
-                (LocalOrRemotePath::Local(root_for_local_str(cwd)), *terminal_id)
+                (
+                    LocalOrRemotePath::Local(root_for_local_str(cwd)),
+                    *terminal_id,
+                )
             })
             .collect();
         new_root_to_terminal
@@ -995,7 +997,6 @@ impl WorkingDirectoriesModel {
 impl Entity for WorkingDirectoriesModel {
     type Event = WorkingDirectoriesEvent;
 }
-
 
 #[cfg(test)]
 #[path = "working_directories_tests.rs"]
