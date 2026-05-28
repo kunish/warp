@@ -16,8 +16,19 @@ pub(super) struct FileTreeMapStore {
 
 impl From<Entry> for FileTreeMapStore {
     fn from(value: Entry) -> Self {
+        // Pre-allocate capacity based on entry counts to avoid repeated
+        // HashMap rehashing for large trees (observed at ~29 MB in heap
+        // profiles for repos with thousands of files).
+        let total_entries = value.count_entries();
+        let directory_count = value.count_directories();
+
         match value {
-            Entry::File(file) => Self::new_for_entry(FileTreeEntryState::File(file.into())),
+            Entry::File(file) => {
+                let mut store = Self::with_capacity(1, 0);
+                let entry = FileTreeEntryState::File(file.into());
+                store.state_map.insert(entry.path_arc(), entry);
+                store
+            }
             Entry::Directory(dir) => {
                 let dir_path: Arc<StandardizedPath> = Arc::new(dir.path);
                 let entry = FileTreeEntryState::Directory(FileTreeDirectoryEntryState {
@@ -26,7 +37,8 @@ impl From<Entry> for FileTreeMapStore {
                     loaded: dir.loaded,
                 });
 
-                let mut file_tree_map = Self::new_for_entry(entry);
+                let mut file_tree_map = Self::with_capacity(total_entries, directory_count);
+                file_tree_map.state_map.insert(entry.path_arc(), entry);
                 for child in dir.children {
                     file_tree_map.append_entry(dir_path.clone(), child);
                 }
@@ -52,12 +64,13 @@ impl FileTreeMapStore {
         }
     }
 
-    pub fn new_for_entry(entry: FileTreeEntryState) -> Self {
-        let state_map = HashMap::from_iter([(entry.path_arc(), entry)]);
-
+    /// Creates a new store with pre-allocated capacity for the given number of
+    /// total entries and directories. This avoids repeated HashMap rehashing
+    /// when bulk-inserting a large file tree.
+    fn with_capacity(total_entries: usize, directory_count: usize) -> Self {
         Self {
-            state_map,
-            parent_to_child_map: Default::default(),
+            state_map: HashMap::with_capacity(total_entries),
+            parent_to_child_map: HashMap::with_capacity(directory_count),
         }
     }
 
@@ -203,6 +216,12 @@ impl FileTreeMapStore {
 
     pub fn insert_entry_at_path(&mut self, path: Arc<StandardizedPath>, entry: Entry) {
         let child_entry_map = FileTreeEntry::from(entry);
+        // Reserve capacity before extending to minimize rehashing of the
+        // main maps when merging a large subtree.
+        self.state_map
+            .reserve(child_entry_map.state_map.state_map.len());
+        self.parent_to_child_map
+            .reserve(child_entry_map.state_map.parent_to_child_map.len());
         self.state_map.extend(child_entry_map.state_map.state_map);
         self.parent_to_child_map
             .extend(child_entry_map.state_map.parent_to_child_map);

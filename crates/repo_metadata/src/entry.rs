@@ -75,6 +75,34 @@ impl Entry {
         }
     }
 
+    /// Returns the total number of entries (files and directories) in this tree,
+    /// including this entry itself. Used for pre-allocating HashMap capacity in
+    /// `FileTreeMapStore` to avoid repeated rehashing during construction.
+    pub fn count_entries(&self) -> usize {
+        match self {
+            Self::File(_) => 1,
+            Self::Directory(dir) => {
+                1 + dir.children.iter().map(Entry::count_entries).sum::<usize>()
+            }
+        }
+    }
+
+    /// Returns the number of directories in this tree, including this entry
+    /// if it is a directory. Used for pre-allocating the parent-to-child map
+    /// in `FileTreeMapStore`.
+    pub fn count_directories(&self) -> usize {
+        match self {
+            Self::File(_) => 0,
+            Self::Directory(dir) => {
+                1 + dir
+                    .children
+                    .iter()
+                    .map(Entry::count_directories)
+                    .sum::<usize>()
+            }
+        }
+    }
+
     pub fn loaded(&self) -> bool {
         match self {
             Self::File(_) => true,

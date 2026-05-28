@@ -723,10 +723,10 @@ impl LocalRepoMetadataModel {
                     }
                 }
                 FileTreeMutation::AddDirectorySubtree {
-                    ref dir_path,
-                    ref subtree,
+                    dir_path,
+                    subtree,
                 } => {
-                    let Some(std_dir) = StandardizedPath::try_from_local(dir_path).ok() else {
+                    let Some(std_dir) = StandardizedPath::try_from_local(&dir_path).ok() else {
                         continue;
                     };
                     if lazy_load && !Self::is_parent_loaded_in_entry(root_entry, &std_dir) {
@@ -741,14 +741,18 @@ impl LocalRepoMetadataModel {
                         {
                             directory.loaded = true;
                         }
-                        root_entry.remove(subtree.path());
-                        root_entry.insert_entry_at_path(
-                            Arc::new(subtree.path().clone()),
-                            subtree.clone(),
-                        );
-                        if emit {
+                        // Extract metadata before consuming the subtree to avoid
+                        // an expensive clone of the entire Entry tree.
+                        let subtree_path = Arc::new(subtree.path().clone());
+                        let metadata = if emit {
+                            Some(flatten_entry_metadata(&subtree))
+                        } else {
+                            None
+                        };
+                        root_entry.remove(&subtree_path);
+                        root_entry.insert_entry_at_path(subtree_path, subtree);
+                        if let Some(metadata) = metadata {
                             let parent_std = std_dir.parent().unwrap_or(std_dir.clone());
-                            let metadata = flatten_entry_metadata(subtree);
                             update_entries.push(FileTreeEntryUpdate {
                                 parent_path_to_replace: parent_std,
                                 subtree_metadata: metadata,
