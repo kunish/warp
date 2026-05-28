@@ -3,7 +3,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write as _;
+use std::fmt::Write;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -24,8 +24,6 @@ use crate::ai::blocklist::SessionContext;
 use crate::ai::paths::host_native_absolute_path;
 use crate::auth::auth_state::AuthState;
 use crate::{safe_debug, safe_warn, send_telemetry_on_executor};
-
-const MAX_FUZZY_MATCH_FAILURE_DETAILS: usize = 5;
 
 /// Result of reading a file from disk or a remote server.
 ///
@@ -111,6 +109,7 @@ impl DiffApplicationError {
                         if match_failures.fuzzy_match_failure_details.is_empty() {
                             message.push(' ');
                         } else {
+                            // Fuzzy match failures render as a multi-line message, so add a newline.
                             message.push('\n');
                         }
                     }
@@ -163,27 +162,21 @@ fn append_fuzzy_match_failure_details(message: &mut String, match_failures: &Dif
         return;
     }
 
-    message.push_str(" The following search blocks could not be matched:");
+    message.push_str(
+        " Update each failed search block to match the file exactly, then retry. The following search blocks could not be matched:",
+    );
     for (index, failure) in match_failures
         .fuzzy_match_failure_details
         .iter()
-        .take(MAX_FUZZY_MATCH_FAILURE_DETAILS)
         .enumerate()
     {
         let _ = write!(message, "\n{}. ", index + 1);
         append_fuzzy_match_failure(message, failure);
     }
-
-    let remaining = match_failures
-        .fuzzy_match_failure_details
-        .len()
-        .saturating_sub(MAX_FUZZY_MATCH_FAILURE_DETAILS);
-    if remaining > 0 {
-        let _ = write!(message, "\n...and {remaining} more failed diff(s).");
-    }
 }
 
 fn append_fuzzy_match_failure(message: &mut String, failure: &DiffMatchFailure) {
+    // Parse the range of lines that the search block was expected to match.
     if let Some(range) = &failure.range {
         let end_line = range.end.saturating_sub(1);
         if range.start == end_line {
@@ -193,9 +186,11 @@ fn append_fuzzy_match_failure(message: &mut String, failure: &DiffMatchFailure) 
         }
     }
 
+    // Add the search block.
     message.push_str("Search:\n");
     message.push_str(&failure.search);
 
+    // Add the replacement content if it exists.
     if let Some(replace) = &failure.replace {
         message.push_str("\nReplace:\n");
         message.push_str(replace);

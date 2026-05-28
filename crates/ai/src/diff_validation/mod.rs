@@ -324,8 +324,7 @@ fn remove_extra_line_num_prefix(replace: String) -> String {
         .join("\n")
 }
 
-const MAX_DIFF_MATCH_FAILURE_LINES: usize = 20;
-const MAX_DIFF_MATCH_FAILURE_BYTES: usize = 2_000;
+const MAX_DIFF_MATCH_FAILURE_BYTES: usize = 1_000;
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize)]
 pub struct DiffMatchFailures {
@@ -348,35 +347,20 @@ pub struct DiffMatchFailure {
 }
 
 fn capped_failure_text(text: &str) -> String {
-    let mut result = String::new();
-    let mut truncated = false;
-
-    for (index, line) in lines(text).enumerate() {
-        if index >= MAX_DIFF_MATCH_FAILURE_LINES {
-            truncated = true;
-            break;
-        }
-
-        let separator_len = usize::from(!result.is_empty());
-        if result.len() + separator_len + line.len() > MAX_DIFF_MATCH_FAILURE_BYTES {
-            truncated = true;
-            break;
-        }
-
-        if !result.is_empty() {
-            result.push('\n');
-        }
-        result.push_str(line);
+    if text.len() <= MAX_DIFF_MATCH_FAILURE_BYTES {
+        return text.to_string();
     }
 
-    if truncated {
-        if !result.is_empty() {
-            result.push('\n');
+    let mut end = 0;
+    for (index, char) in text.char_indices() {
+        let next = index + char.len_utf8();
+        if next > MAX_DIFF_MATCH_FAILURE_BYTES {
+            break;
         }
-        result.push_str("... [truncated]");
+        end = next;
     }
 
-    result
+    format!("{}\n... [truncated]", &text[..end])
 }
 
 fn v4a_hunk_search_text(diff: &V4AHunk) -> String {
@@ -484,7 +468,7 @@ pub fn fuzzy_match_v4a_diffs(
                 failures.fuzzy_match_failures += 1;
                 failures.fuzzy_match_failure_details.push(DiffMatchFailure {
                     search: capped_failure_text(&v4a_hunk_search_text(diff)),
-                    replace: None,
+                    replace: Some(capped_failure_text(&diff.new)),
                     range: None,
                 });
             }

@@ -57,6 +57,8 @@ fn test_apply_diffs_error_when_no_diffs_applied() {
         }
 
         let message = DiffApplicationError::error_for_conversation(&errors);
+        // Diff application error message should contain the search and replace content
+        // and the expected line number from the failed diff.
         assert!(message.contains("This content doesn't exist in the file"));
         assert!(message.contains("Replacement content"));
         assert!(message.contains("Expected line 1"));
@@ -676,6 +678,8 @@ fn test_format_match_error() {
         },
     };
 
+    // If no fuzzy match failures are surfaced, the error message should only contain the file name
+    // and the message that the changes were already made.
     assert_eq!(
         err.to_conversation_message(),
         "Could not apply all diffs to file.txt. The changes to file.txt were already made."
@@ -695,6 +699,8 @@ fn test_format_match_error() {
         },
     };
 
+    // If fuzzy match failures are surfaced without replacement content and range (i.e. for v4a),
+    // the error message should contain the search block.
     assert_eq!(
         err.to_conversation_message(),
         "Could not apply all diffs to file.txt. The following search blocks could not be matched:\n1. Search:\nbad search\nThe changes to file.txt were already made."
@@ -702,7 +708,7 @@ fn test_format_match_error() {
 }
 
 #[test]
-fn test_format_match_error_caps_failure_details() {
+fn test_format_match_error_includes_all_failure_details() {
     let details = (0..6)
         .map(|index| DiffMatchFailure {
             search: format!("bad search {index}"),
@@ -723,8 +729,8 @@ fn test_format_match_error_caps_failure_details() {
     let message = err.to_conversation_message();
     assert!(message.contains("bad search 0"));
     assert!(message.contains("bad search 4"));
-    assert!(!message.contains("bad search 5"));
-    assert!(message.contains("...and 1 more failed diff(s)."));
+    assert!(message.contains("bad search 5"));
+    assert!(!message.contains("more failed diff"));
 }
 
 #[test]
