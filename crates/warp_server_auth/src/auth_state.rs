@@ -260,6 +260,7 @@ impl AuthState {
     pub fn set_credentials(&self, credentials: Option<Credentials>) {
         *self.credentials.write() = credentials;
     }
+
     /// Applies auth data received by the remote server daemon handshake.
     ///
     /// Empty values are authoritative: an empty token clears bearer credentials, and an empty user
@@ -274,8 +275,8 @@ impl AuthState {
         self.set_remote_server_bearer_token(auth_token);
         self.set_remote_server_user(user_id, user_email);
     }
-    /// Applies bearer-token credentials received from the remote server daemon.
 
+    /// Applies bearer-token credentials received from the remote server daemon.
     #[cfg(any(not(target_family = "wasm"), test, feature = "test-util"))]
     pub fn set_remote_server_bearer_token(&self, auth_token: String) {
         if auth_token.is_empty() {
