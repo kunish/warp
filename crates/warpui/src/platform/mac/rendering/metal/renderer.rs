@@ -990,7 +990,6 @@ mod shader {
                 fade_start,
                 fade_end,
                 is_emoji: is_emoji as i32,
-                __bindgen_padding_0: Default::default(),
             }
         }
     }
