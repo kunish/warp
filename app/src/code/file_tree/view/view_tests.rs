@@ -197,6 +197,64 @@ fn new_directory_action_creates_directory_and_updates_tree() {
         });
     });
 }
+
+#[test]
+fn failed_new_directory_action_removes_placeholder_from_tree() {
+    VirtualFS::test("file_tree_new_directory_action_failure", |dirs, mut vfs| {
+        vfs.mkdir("repo/components");
+        let repo_root = dirs.tests().join("repo");
+        let existing_directory = repo_root.join("components");
+
+        App::test((), |mut app| async move {
+            let _ = initialize_app(&mut app);
+            let (_, file_tree_view) = app.add_window(WindowStyle::NotStealFocus, FileTreeView::new);
+
+            file_tree_view.update(&mut app, |view, ctx| {
+                view.set_is_active(true, ctx);
+                view.set_root_directories(vec![repo_root.clone()], ctx);
+            });
+
+            file_tree_view.update(&mut app, |view, ctx| {
+                let id = super::FileTreeIdentifier {
+                    root: std_path(&repo_root),
+                    index: 0,
+                };
+                view.create_new_directory(&id, ctx);
+                view.editor_view.update(ctx, |editor, ctx| {
+                    editor.set_buffer_text("components", ctx);
+                });
+                view.commit_pending_edit(ctx);
+            });
+
+            assert!(existing_directory.is_dir());
+            file_tree_view.read(&app, |view, _ctx| {
+                let root = std_path(&repo_root);
+                let existing_directory =
+                    warp_util::standardized_path::StandardizedPath::from_local_canonicalized(
+                        &existing_directory,
+                    )
+                    .unwrap();
+                let root_dir = view.root_directories.get(&root).unwrap();
+
+                assert!(root_dir.entry.contains(&existing_directory));
+                assert!(view.pending_edit.is_none());
+                assert_eq!(
+                    root_dir
+                        .items
+                        .iter()
+                        .filter(|item| item.path() == &existing_directory)
+                        .count(),
+                    1
+                );
+                assert!(!root_dir.items.iter().any(|item| item
+                    .path()
+                    .file_name()
+                    .is_some_and(|name| name == "new_directory")));
+            });
+        });
+    });
+}
+
 #[test]
 fn repo_transition_unregisters_lazy_loaded_path() {
     VirtualFS::test("file_tree_repo_transition", |dirs, mut vfs| {

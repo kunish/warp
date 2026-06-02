@@ -226,7 +226,7 @@ impl FileTreeView {
 
         match pending_edit.kind {
             PendingEditKind::CreateNewFile => {
-                let new_entry = {
+                let new_entry = match {
                     let Some(root_dir) = self.root_directories.get_mut(&file_tree_id.root) else {
                         return;
                     };
@@ -238,17 +238,26 @@ impl FileTreeView {
                         let mut new_std = (*metadata.path).clone();
                         new_std.set_file_name(&buffer_content);
                         let local_path = new_std.to_local_path_lossy();
+                        let mut metadata = metadata.clone();
                         metadata.path = Arc::new(new_std);
 
                         if let Err(e) = std::fs::File::create_new(&local_path) {
                             log::warn!("Failed to create file: {e}");
-                            return;
+                            Err(())
+                        } else {
+                            send_telemetry_from_ctx!(TelemetryEvent::FileTreeItemCreated, ctx);
+
+                            Ok(FileTreeEntryState::File(metadata))
                         }
-
-                        send_telemetry_from_ctx!(TelemetryEvent::FileTreeItemCreated, ctx);
-
-                        FileTreeEntryState::File(metadata.clone())
                     } else {
+                        return;
+                    }
+                } {
+                    Ok(new_entry) => new_entry,
+                    Err(()) => {
+                        self.remove_create_placeholder(&file_tree_id);
+                        self.rebuild_flattened_items();
+                        ctx.notify();
                         return;
                     }
                 };
@@ -262,7 +271,7 @@ impl FileTreeView {
                 self.rebuild_flattened_items();
             }
             PendingEditKind::CreateNewDirectory => {
-                let new_entry = {
+                let new_entry = match {
                     let Some(root_dir) = self.root_directories.get_mut(&file_tree_id.root) else {
                         return;
                     };
@@ -274,17 +283,26 @@ impl FileTreeView {
                         let mut new_std = (*directory.path).clone();
                         new_std.set_file_name(&buffer_content);
                         let local_path = new_std.to_local_path_lossy();
+                        let mut directory = directory.clone();
                         directory.path = Arc::new(new_std);
 
                         if let Err(e) = std::fs::create_dir(&local_path) {
                             log::warn!("Failed to create directory: {e}");
-                            return;
+                            Err(())
+                        } else {
+                            send_telemetry_from_ctx!(TelemetryEvent::FileTreeItemCreated, ctx);
+
+                            Ok(FileTreeEntryState::Directory(directory))
                         }
-
-                        send_telemetry_from_ctx!(TelemetryEvent::FileTreeItemCreated, ctx);
-
-                        FileTreeEntryState::Directory(directory.clone())
                     } else {
+                        return;
+                    }
+                } {
+                    Ok(new_entry) => new_entry,
+                    Err(()) => {
+                        self.remove_create_placeholder(&file_tree_id);
+                        self.rebuild_flattened_items();
+                        ctx.notify();
                         return;
                     }
                 };
@@ -354,12 +372,21 @@ impl FileTreeView {
                 pending_edit.kind,
                 PendingEditKind::CreateNewFile | PendingEditKind::CreateNewDirectory
             ) {
-                if let Some(root_dir) = self.root_directories.get_mut(&id.root) {
-                    root_dir.items.remove(id.index);
-                }
+                self.remove_create_placeholder(id);
             }
         }
         ctx.notify();
+    }
+
+    fn remove_create_placeholder(&mut self, id: &FileTreeIdentifier) {
+        if self.selected_item.as_ref() == Some(id) {
+            self.selected_item = None;
+        }
+        if let Some(root_dir) = self.root_directories.get_mut(&id.root) {
+            if id.index < root_dir.items.len() {
+                root_dir.items.remove(id.index);
+            }
+        }
     }
 
     /// Inserts a new entry into the tree.
