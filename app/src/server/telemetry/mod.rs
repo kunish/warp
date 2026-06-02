@@ -315,8 +315,6 @@ impl TelemetryApi {
             return Ok(());
         }
 
-        log::info!("Start to send telemetry events to RudderStack");
-
         let (mut messages_with_ugc, messages_without_ugc): (Vec<_>, Vec<_>) = messages
             .into_iter()
             .partition(|message| message.contains_ugc);
@@ -326,19 +324,24 @@ impl TelemetryApi {
             messages_with_ugc.clear();
         }
 
-        for (messages, rudder_stack_destination) in [
+        for (messages, rudder_stack_destination, message_kind) in [
             (
                 messages_with_ugc,
                 ChannelState::rudderstack_ugc_destination(),
+                "UGC",
             ),
             (
                 messages_without_ugc,
                 ChannelState::rudderstack_non_ugc_destination(),
+                "non-UGC",
             ),
         ] {
             if messages.is_empty() {
                 continue;
             }
+
+            let message_count = messages.len();
+            log::info!("Sending {message_count} {message_kind} telemetry events to RudderStack");
 
             // Note that timestamp and context are already included in the individual RudderBatchMessages
             // and these are the most important ones,
