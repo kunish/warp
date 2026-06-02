@@ -38,6 +38,9 @@ use crate::rendering::{get_best_dash_gap, GlyphCache, GlyphRasterBoundsFn, Raste
 const METAL_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shaders.metallib"));
 /// Metal recommends inline byte bindings only for dynamic data smaller than 4 KiB.
 const MAX_INLINE_VERTEX_BYTES_LENGTH: usize = 4 * 1024;
+const QUAD_VERTICES_VERTEX_BUFFER_INDEX: usize = 0;
+const INSTANCE_UNIFORMS_VERTEX_BUFFER_INDEX: usize = 1;
+const VIEWPORT_UNIFORMS_VERTEX_BUFFER_INDEX: usize = 2;
 static WRITE_LIB_TO_FILE: Once = Once::new();
 
 /// A structure to help manage a single rendering pass.
@@ -341,6 +344,23 @@ impl<'a> Frame<'a> {
             znear: 0.0,
             zfar: 1.0,
         });
+        let uniforms = shader::Uniforms::new(self.ctx.drawable_size.into());
+        let uniforms_ptr = NonNull::from(&uniforms).cast::<c_void>();
+        let uniforms_len = mem::size_of::<shader::Uniforms>();
+        // SAFETY: The shared quad buffer outlives every draw call in this frame, and Metal
+        // copies the frame-invariant viewport uniforms while encoding this binding.
+        unsafe {
+            self.command_encoder.setVertexBuffer_offset_atIndex(
+                Some(&self.resources.quad_vertices),
+                0,
+                QUAD_VERTICES_VERTEX_BUFFER_INDEX,
+            );
+            self.command_encoder.setVertexBytes_length_atIndex(
+                uniforms_ptr,
+                uniforms_len,
+                VIEWPORT_UNIFORMS_VERTEX_BUFFER_INDEX,
+            );
+        }
 
         for layer in self.scene.layers() {
             if let Some(bounds) = layer.clip_bounds {
@@ -435,20 +455,10 @@ impl<'a> Frame<'a> {
             0.,
             vec2f(0.0, 0.0).into(),
         );
-        let _per_rect_uniforms_buffer =
-            self.bind_dynamic_vertex_data(std::slice::from_ref(&per_rect_uniforms), 1);
-
-        let uniforms = shader::Uniforms::new(self.ctx.drawable_size.into());
-        let uniforms_ptr = NonNull::from(&uniforms).cast::<c_void>();
-        let uniforms_len = mem::size_of::<shader::Uniforms>();
-        // SAFETY: `uniforms` outlives this encoded draw call, and the bound byte sizes and
-        // indices match the shader bindings.
-        unsafe {
-            self.command_encoder
-                .setVertexBytes_length_atIndex(uniforms_ptr, uniforms_len, 2);
-            self.command_encoder
-                .setFragmentBytes_length_atIndex(uniforms_ptr, uniforms_len, 0);
-        }
+        let _per_rect_uniforms_buffer = self.bind_dynamic_vertex_data(
+            std::slice::from_ref(&per_rect_uniforms),
+            INSTANCE_UNIFORMS_VERTEX_BUFFER_INDEX,
+        );
 
         let (_, texture) = self
             .resources
@@ -519,14 +529,6 @@ impl<'a> Frame<'a> {
 
         self.command_encoder
             .setRenderPipelineState(&self.resources.draw_images_pipeline_state);
-        // SAFETY: index 0 binds the shared quad vertex buffer, which outlives the draw calls.
-        unsafe {
-            self.command_encoder.setVertexBuffer_offset_atIndex(
-                Some(&self.resources.quad_vertices),
-                0,
-                0,
-            );
-        }
 
         for image in &layer.images {
             self.render_image_or_icon(Some(image), None);
@@ -546,14 +548,6 @@ impl<'a> Frame<'a> {
 
         self.command_encoder
             .setRenderPipelineState(&self.resources.draw_rects_pipeline_state);
-        // SAFETY: index 0 binds the shared quad vertex buffer, which outlives the draw call.
-        unsafe {
-            self.command_encoder.setVertexBuffer_offset_atIndex(
-                Some(&self.resources.quad_vertices),
-                0,
-                0,
-            );
-        }
 
         let mut per_rect_uniforms = Vec::new();
         for rect in &layer.rects {
@@ -651,20 +645,11 @@ impl<'a> Frame<'a> {
                 gap_lengths.into(),
             ));
         }
-        let _per_rect_uniforms_buffer = self.bind_dynamic_vertex_data(&per_rect_uniforms, 1);
+        let _per_rect_uniforms_buffer = self
+            .bind_dynamic_vertex_data(&per_rect_uniforms, INSTANCE_UNIFORMS_VERTEX_BUFFER_INDEX);
 
-        let uniforms = shader::Uniforms::new(self.ctx.drawable_size.into());
-        let uniforms_ptr = NonNull::from(&uniforms).cast::<c_void>();
-        let uniforms_len = mem::size_of::<shader::Uniforms>();
-
-        // SAFETY: `uniforms` outlives this encoded draw call, and the bound byte sizes and
-        // indices match the shader bindings.
+        // SAFETY: The quad index buffer outlives this encoded draw call.
         unsafe {
-            self.command_encoder
-                .setVertexBytes_length_atIndex(uniforms_ptr, uniforms_len, 2);
-            self.command_encoder
-                .setFragmentBytes_length_atIndex(uniforms_ptr, uniforms_len, 0);
-
             self.command_encoder
                 .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferOffset_instanceCount(
                     MTLPrimitiveType::Triangle,
@@ -685,14 +670,6 @@ impl<'a> Frame<'a> {
 
         self.command_encoder
             .setRenderPipelineState(&self.resources.draw_glyphs_pipeline_state);
-        // SAFETY: index 0 binds the shared quad vertex buffer, which outlives the draw calls.
-        unsafe {
-            self.command_encoder.setVertexBuffer_offset_atIndex(
-                Some(&self.resources.quad_vertices),
-                0,
-                0,
-            );
-        }
 
         let scale_factor = self.scene.scale_factor();
 
@@ -772,11 +749,10 @@ impl<'a> Frame<'a> {
         }
 
         for (texture_id, per_glyph_uniforms) in texture_to_glyph {
-            let _per_glyph_uniforms_buffer = self.bind_dynamic_vertex_data(&per_glyph_uniforms, 1);
-
-            let uniforms = shader::Uniforms::new(self.ctx.drawable_size.into());
-            let uniforms_ptr = NonNull::from(&uniforms).cast::<c_void>();
-            let uniforms_len = mem::size_of::<shader::Uniforms>();
+            let _per_glyph_uniforms_buffer = self.bind_dynamic_vertex_data(
+                &per_glyph_uniforms,
+                INSTANCE_UNIFORMS_VERTEX_BUFFER_INDEX,
+            );
 
             let texture = self
                 .resources
@@ -784,11 +760,9 @@ impl<'a> Frame<'a> {
                 .texture(&texture_id)
                 .expect("texture ID should be in atlas");
 
-            // SAFETY: `uniforms`, the bound texture, and the quad index buffer outlive this
-            // encoded draw call, and the bound sizes/indices match the shader bindings.
+            // SAFETY: The bound texture and quad index buffer outlive this encoded draw call,
+            // and the bound index matches the shader binding.
             unsafe {
-                self.command_encoder
-                    .setVertexBytes_length_atIndex(uniforms_ptr, uniforms_len, 2);
                 self.command_encoder
                     .setFragmentTexture_atIndex(Some(&**texture), 0);
                 self.command_encoder
