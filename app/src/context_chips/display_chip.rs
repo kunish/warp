@@ -370,6 +370,7 @@ pub enum DisplayChipKind {
     Subshell,
     VirtualEnvironment,
     CondaEnvironment,
+    RubyVersion,
     NodeVersion {
         popup_open: bool,
         popup: ViewHandle<crate::context_chips::node_version_popup::NodeVersionPopupView>,
@@ -400,6 +401,7 @@ impl DisplayChipKind {
             | DisplayChipKind::Subshell
             | DisplayChipKind::VirtualEnvironment
             | DisplayChipKind::CondaEnvironment
+            | DisplayChipKind::RubyVersion
             | DisplayChipKind::AgentPlanAndTodoList { .. } => false,
         }
     }
@@ -762,6 +764,7 @@ impl DisplayChip {
             ContextChipKind::Subshell => DisplayChipKind::Subshell,
             ContextChipKind::VirtualEnvironment => DisplayChipKind::VirtualEnvironment,
             ContextChipKind::CondaEnvironment => DisplayChipKind::CondaEnvironment,
+            ContextChipKind::RubyVersion => DisplayChipKind::RubyVersion,
             ContextChipKind::NodeVersion => {
                 let current_version = chip_result.value.as_ref().map(|v| v.to_string());
                 let model_events = &config.model_events;
@@ -954,6 +957,7 @@ impl DisplayChip {
             | DisplayChipKind::Subshell
             | DisplayChipKind::VirtualEnvironment
             | DisplayChipKind::CondaEnvironment
+            | DisplayChipKind::RubyVersion
             | DisplayChipKind::NodeVersion { .. }
             | DisplayChipKind::AgentPlanAndTodoList { .. }
             | DisplayChipKind::GithubPullRequest => {}
@@ -1483,6 +1487,21 @@ impl DisplayChip {
         render_udi_chip(config, appearance)
     }
 
+    fn ruby_version_chip(&self, app: &AppContext) -> Box<dyn Element> {
+        let appearance = Appearance::as_ref(app);
+        let color = if self.is_in_agent_view {
+            agent_view_chip_color(appearance)
+        } else {
+            appearance.theme().ansi_fg_red()
+        };
+        let mut config = UdiChipConfig::new_with_icon(Icon::Terminal, color, self.text.clone());
+        if self.is_in_agent_view {
+            config = config.for_agent_view();
+        }
+
+        render_udi_chip(config, appearance)
+    }
+
     fn node_version_chip(
         &self,
         popup: &ViewHandle<crate::context_chips::node_version_popup::NodeVersionPopupView>,
@@ -1553,6 +1572,7 @@ impl DisplayChip {
             DisplayChipKind::Ssh => Some(self.ssh_chip(app)),
             DisplayChipKind::Subshell => Some(self.subshell_chip(app)),
             DisplayChipKind::VirtualEnvironment => Some(self.virtual_environment_chip(app)),
+            DisplayChipKind::RubyVersion => Some(self.ruby_version_chip(app)),
             DisplayChipKind::NodeVersion { popup, popup_open } => {
                 Some(self.node_version_chip(popup, *popup_open, app))
             }
@@ -1654,6 +1674,7 @@ impl TypedActionView for DisplayChip {
                 | DisplayChipKind::Subshell
                 | DisplayChipKind::VirtualEnvironment
                 | DisplayChipKind::CondaEnvironment
+                | DisplayChipKind::RubyVersion
                 | DisplayChipKind::AgentPlanAndTodoList { .. }
                 | DisplayChipKind::Text
                 | DisplayChipKind::GithubPullRequest

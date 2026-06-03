@@ -33,6 +33,7 @@ fn create_default_serialized_block() -> SerializedBlock {
         virtual_env: None,
         conda_env: None,
         node_version: None,
+        ruby_version: None,
         exit_code: ExitCode::from(0),
         did_execute: false,
         start_ts: Some(Local::now()),
@@ -215,6 +216,7 @@ fn test_restored_blocks_on_different_host() {
             virtual_env: None,
             conda_env: None,
             node_version: None,
+            ruby_version: None,
             exit_code: ExitCode::from(0),
             did_execute: true,
             completed_ts: Some(
@@ -253,6 +255,7 @@ fn test_restored_blocks_on_different_host() {
             virtual_env: None,
             conda_env: None,
             node_version: None,
+            ruby_version: None,
             exit_code: ExitCode::from(0),
             did_execute: true,
             completed_ts: Some(
@@ -291,6 +294,7 @@ fn test_restored_blocks_on_different_host() {
             virtual_env: None,
             conda_env: None,
             node_version: None,
+            ruby_version: None,
             exit_code: ExitCode::from(0),
             did_execute: true,
             completed_ts: Some(
@@ -329,6 +333,7 @@ fn test_restored_blocks_on_different_host() {
             virtual_env: None,
             conda_env: None,
             node_version: None,
+            ruby_version: None,
             exit_code: ExitCode::from(0),
             did_execute: true,
             completed_ts: Some(
