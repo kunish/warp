@@ -183,6 +183,67 @@ impl CommentEditor {
         self.laid_out_size.borrow().as_ref().cloned()
     }
 
+    /// Whether the primary ("Comment"/"Update") button is currently disabled (true while the draft
+    /// body is empty). Test-only accessor.
+    #[cfg(feature = "integration_tests")]
+    pub fn save_button_disabled_for_test(&self) -> bool {
+        self.save_button_disabled
+    }
+
+    /// The current label of the primary button ("Comment" for a new comment, "Update" when editing
+    /// an existing one). Test-only accessor.
+    #[cfg(feature = "integration_tests")]
+    pub fn primary_button_label_for_test(&self, app: &AppContext) -> String {
+        self.save_button.as_ref(app).label().to_string()
+    }
+
+    /// Whether the "Remove" button is shown (true when editing an existing comment). Test-only.
+    #[cfg(feature = "integration_tests")]
+    pub fn show_remove_button_for_test(&self) -> bool {
+        self.show_remove_button
+    }
+
+    /// Whether the inner text editor (where typing lands) currently holds focus. Test-only.
+    #[cfg(feature = "integration_tests")]
+    pub fn inner_editor_focused_for_test(&self, app: &AppContext) -> bool {
+        self.editor.is_focused(app)
+    }
+
+    /// Focus the inner text editor, mirroring what opening the composer does. Test-only.
+    #[cfg(feature = "integration_tests")]
+    pub fn focus_inner_editor_for_test(&self, ctx: &mut ViewContext<Self>) {
+        ctx.focus(&self.editor);
+    }
+
+    /// Invoke the same path Cmd/Ctrl+Enter triggers (save the comment). Test-only drive helper.
+    #[cfg(feature = "integration_tests")]
+    pub fn cmd_enter_for_test(&mut self, ctx: &mut ViewContext<Self>) {
+        self.save_comment(ctx);
+    }
+
+    /// Invoke the same path the Escape key triggers (close only when the draft is empty). Test-only.
+    #[cfg(feature = "integration_tests")]
+    pub fn escape_for_test(&mut self, ctx: &mut ViewContext<Self>) {
+        self.handle_escape(ctx);
+    }
+
+    /// Append `text` to the draft body through the inner markdown editor, mirroring what typing
+    /// into the focused composer produces (updating the save-button state and notifying the host so
+    /// the inline block re-measures). Test-only drive helper.
+    #[cfg(feature = "integration_tests")]
+    pub fn type_text_for_test(&mut self, text: &str, ctx: &mut ViewContext<Self>) {
+        let mut markdown = self.editor.as_ref(ctx).model().as_ref(ctx).markdown(ctx);
+        markdown.push_str(text);
+        self.editor.update(ctx, |editor, ctx| {
+            editor.model().update(ctx, |model, ctx| {
+                model.reset_with_markdown(&markdown, ctx);
+            });
+        });
+        self.update_save_button_state(ctx);
+        ctx.emit(CommentEditorEvent::ContentChanged);
+        ctx.notify();
+    }
+
     #[allow(unused)] // TODO(CODE-1464): use this
     pub fn set_laid_out_size(&self, value: Vector2F) {
         self.laid_out_size.replace(Some(value));
@@ -268,13 +329,18 @@ impl CommentEditor {
                 self.save_comment(ctx);
             }
             EditorViewEvent::EscapePressed => {
-                // Dismiss the comment composer when pressing Escape on an empty draft.
-                if self.editor.as_ref(ctx).model().as_ref(ctx).is_empty(ctx) {
-                    self.reset(ctx);
-                    ctx.emit(CommentEditorEvent::CloseEditor);
-                }
+                self.handle_escape(ctx);
             }
             _ => {}
+        }
+    }
+
+    /// Dismiss the composer only when pressing Escape on an empty draft (a non-empty draft is
+    /// preserved). Shared by the Escape key handler and the test driver.
+    fn handle_escape(&mut self, ctx: &mut ViewContext<Self>) {
+        if self.editor.as_ref(ctx).model().as_ref(ctx).is_empty(ctx) {
+            self.reset(ctx);
+            ctx.emit(CommentEditorEvent::CloseEditor);
         }
     }
 

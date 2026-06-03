@@ -5,11 +5,13 @@ use warp_editor::render::model::{
     BlockItem, HitTestOptions, LineCount, Location, RenderLineLocation,
 };
 use warpui::units::Pixels;
-use warpui::{AppContext, ViewContext};
+use warpui::{AppContext, ViewContext, ViewHandle};
 
 use super::{CodeReviewView, CodeReviewViewState, FILE_HEADER_HEIGHT};
 use crate::code::buffer_location::LocalOrRemotePath;
 use crate::code::editor::line::EditorLineLocation;
+use crate::code::editor::view::CodeEditorView;
+use crate::code_review::comments::{AttachedReviewCommentTarget, CommentId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodeReviewVisibleAnchorForTest {
@@ -378,5 +380,277 @@ impl CodeReviewView {
             .into_string();
         let line_index = line_number.checked_sub(1)?;
         text.lines().nth(line_index).map(ToOwned::to_owned)
+    }
+
+    /// Resolve the inner [`CodeEditorView`] for a file path, probing both the raw path and the
+    /// repo-joined absolute path (mirrors [`Self::line_text_for_test`]).
+    fn code_editor_for_test(
+        &self,
+        path: &str,
+        ctx: &AppContext,
+    ) -> Option<ViewHandle<CodeEditorView>> {
+        let local_path = LocalOrRemotePath::Local(PathBuf::from(path));
+        let editor = if let Some(editor) = self.editor_for_path(&local_path, ctx) {
+            editor
+        } else {
+            let absolute_path = self.repo_path()?.join(path);
+            self.editor_for_path(&absolute_path, ctx)?
+        };
+        Some(editor.as_ref(ctx).editor().clone())
+    }
+
+    /// The 1-based line the inline composer is open at for `path`, or `None` if no composer is open.
+    pub fn composer_open_line_for_test(&self, path: &str, ctx: &AppContext) -> Option<usize> {
+        self.code_editor_for_test(path, ctx)?
+            .as_ref(ctx)
+            .composer_open_line_for_test(ctx)
+    }
+
+    /// Whether the inline composer is open for `path`.
+    pub fn composer_open_for_test(&self, path: &str, ctx: &AppContext) -> bool {
+        self.composer_open_line_for_test(path, ctx).is_some()
+    }
+
+    /// The current draft/body text of the active composer for `path`.
+    pub fn composer_body_for_test(&self, path: &str, ctx: &AppContext) -> Option<String> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .composer_body_for_test(ctx),
+        )
+    }
+
+    /// Whether the composer's primary ("Comment"/"Update") button is disabled (empty draft).
+    pub fn composer_save_disabled_for_test(&self, path: &str, ctx: &AppContext) -> Option<bool> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .composer_save_disabled_for_test(ctx),
+        )
+    }
+
+    /// The label of the composer's primary button ("Comment" for new, "Update" when editing).
+    pub fn composer_primary_label_for_test(&self, path: &str, ctx: &AppContext) -> Option<String> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .composer_primary_label_for_test(ctx),
+        )
+    }
+
+    /// Whether the composer shows the "Remove" button (editing an existing comment).
+    pub fn composer_show_remove_for_test(&self, path: &str, ctx: &AppContext) -> Option<bool> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .composer_show_remove_for_test(ctx),
+        )
+    }
+
+    /// Number of inline comment blocks in the per-view render state for `path`.
+    pub fn inline_comment_block_count_for_test(
+        &self,
+        path: &str,
+        ctx: &AppContext,
+    ) -> Option<usize> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .inline_comment_block_count_for_test(ctx),
+        )
+    }
+
+    /// On-screen (viewport-space) Y of the top of the given 1-based current line in `path`.
+    pub fn line_viewport_y_for_test(
+        &self,
+        path: &str,
+        line: usize,
+        ctx: &AppContext,
+    ) -> Option<f32> {
+        self.code_editor_for_test(path, ctx)?
+            .as_ref(ctx)
+            .line_viewport_y_for_test(line, ctx)
+    }
+
+    /// On-screen (viewport-space) Y of the top of the inline comment block anchored at the given
+    /// 1-based current line in `path`.
+    pub fn comment_block_viewport_y_for_test(
+        &self,
+        path: &str,
+        line: usize,
+        ctx: &AppContext,
+    ) -> Option<f32> {
+        self.code_editor_for_test(path, ctx)?
+            .as_ref(ctx)
+            .comment_block_viewport_y_for_test(line, ctx)
+    }
+
+    /// Reserved height of the inline comment block anchored at the given 1-based current line in
+    /// `path`.
+    pub fn comment_block_height_for_test(
+        &self,
+        path: &str,
+        line: usize,
+        ctx: &AppContext,
+    ) -> Option<f32> {
+        self.code_editor_for_test(path, ctx)?
+            .as_ref(ctx)
+            .comment_block_height_for_test(line, ctx)
+    }
+
+    /// Whether the general/diffset (header-anchored) comment composer overlay is currently open.
+    pub fn general_composer_overlay_present_for_test(&self) -> bool {
+        self.comment_composer.is_some()
+    }
+
+    /// Open the general/diffset (header-anchored) comment composer overlay.
+    pub fn open_general_composer_for_test(&mut self, ctx: &mut ViewContext<Self>) {
+        self.open_review_comment_composer(None, ctx);
+    }
+
+    /// Open the inline composer on the given 1-based current line of `path`. Returns false if the
+    /// editor isn't available.
+    pub fn open_comment_line_for_test(
+        &mut self,
+        path: &str,
+        line: usize,
+        ctx: &mut ViewContext<Self>,
+    ) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.open_comment_line_for_test(line, ctx);
+        });
+        true
+    }
+
+    /// Type `text` into the focused composer for `path`.
+    pub fn type_into_composer_for_test(
+        &mut self,
+        path: &str,
+        text: &str,
+        ctx: &mut ViewContext<Self>,
+    ) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.type_into_composer_for_test(text, ctx);
+        });
+        true
+    }
+
+    /// Invoke the composer's primary save action for `path` (equivalent to clicking the button).
+    pub fn save_composer_for_test(&mut self, path: &str, ctx: &mut ViewContext<Self>) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.save_composer_for_test(ctx);
+        });
+        true
+    }
+
+    /// Cancel the composer for `path` (equivalent to clicking "Cancel").
+    pub fn cancel_composer_for_test(&mut self, path: &str, ctx: &mut ViewContext<Self>) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.cancel_composer_for_test(ctx);
+        });
+        true
+    }
+
+    /// Whether the composer's inner text editor for `path` currently holds focus.
+    pub fn composer_inner_focused_for_test(&self, path: &str, ctx: &AppContext) -> Option<bool> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .composer_inner_focused_for_test(ctx),
+        )
+    }
+
+    /// Focus the composer's inner text editor for `path`.
+    pub fn focus_composer_for_test(&mut self, path: &str, ctx: &mut ViewContext<Self>) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.focus_composer_for_test(ctx);
+        });
+        true
+    }
+
+    /// Save the composer for `path` via the Cmd/Ctrl+Enter path.
+    pub fn save_composer_via_cmd_enter_for_test(
+        &mut self,
+        path: &str,
+        ctx: &mut ViewContext<Self>,
+    ) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.save_composer_via_cmd_enter_for_test(ctx);
+        });
+        true
+    }
+
+    /// Press Escape in the composer for `path` (closes only when the draft is empty).
+    pub fn escape_composer_for_test(&mut self, path: &str, ctx: &mut ViewContext<Self>) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.escape_composer_for_test(ctx);
+        });
+        true
+    }
+
+    /// Remove the comment currently being edited in the composer for `path`.
+    pub fn remove_comment_for_test(&mut self, path: &str, ctx: &mut ViewContext<Self>) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.remove_comment_for_test(ctx);
+        });
+        true
+    }
+
+    /// The `(id, 1-based line)` of the first line-targeted saved comment in the active batch.
+    fn first_line_comment_for_test(&self, ctx: &AppContext) -> Option<(CommentId, usize)> {
+        self.active_comment_model.as_ref().and_then(|model| {
+            model.read(ctx, |batch, _| {
+                batch
+                    .comments
+                    .iter()
+                    .find_map(|comment| match &comment.target {
+                        AttachedReviewCommentTarget::Line { line, .. } => {
+                            Some((comment.id, line.line_number()?.as_u32() as usize))
+                        }
+                        _ => None,
+                    })
+            })
+        })
+    }
+
+    /// Number of saved comments in the active batch (all targets).
+    pub fn saved_comment_count_for_test(&self, ctx: &AppContext) -> usize {
+        self.active_comment_model
+            .as_ref()
+            .map(|model| model.read(ctx, |batch, _| batch.comments.len()))
+            .unwrap_or(0)
+    }
+
+    /// Reopen the first saved line comment as a prefilled inline editor (mirrors the panel "Edit" /
+    /// `RequestOpenSavedComment` path). Returns the 1-based line it was reopened at, or `None` if
+    /// no saved line comment exists.
+    pub fn reopen_saved_comment_for_test(&mut self, ctx: &mut ViewContext<Self>) -> Option<usize> {
+        let (comment_id, line) = self.first_line_comment_for_test(ctx)?;
+        self.handle_edit_comment(&comment_id, ctx);
+        Some(line)
     }
 }

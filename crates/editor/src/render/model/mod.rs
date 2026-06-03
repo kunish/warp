@@ -2657,6 +2657,22 @@ impl RenderState {
         None
     }
 
+    /// Number of inline comment blocks ([`BlockItem::EmbeddedComment`]) currently in this view's
+    /// content tree, across all anchor lines. Diff removed-line temporary blocks are not counted.
+    pub fn comment_block_count(&self) -> usize {
+        let content = self.content.borrow();
+        let mut cursor = content.cursor::<LineCount, LayoutSummary>();
+        cursor.descend_to_first_item(&content, |_| true);
+        let mut count = 0;
+        while let Some(positioned) = cursor.positioned_item() {
+            if matches!(positioned.item, BlockItem::EmbeddedComment(_)) {
+                count += 1;
+            }
+            cursor.next();
+        }
+        count
+    }
+
     /// Group comment blocks by anchor line and reconcile them into the content tree.
     fn apply_comment_blocks(&self, blocks: Vec<CommentBlock>) {
         let mut grouped: HashMap<LineCount, Vec<BlockItem>> = HashMap::new();

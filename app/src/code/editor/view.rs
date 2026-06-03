@@ -89,6 +89,9 @@ mod actions;
 pub use actions::init;
 pub(super) use actions::CodeEditorViewAction;
 
+#[cfg(feature = "integration_tests")]
+mod view_integration;
+
 mod vim_handler;
 
 /// Limit the keybindings that conflict with the Agent Mode embedded editor.

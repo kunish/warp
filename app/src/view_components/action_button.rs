@@ -414,6 +414,11 @@ impl ActionButton {
         self.disabled
     }
 
+    #[cfg_attr(not(feature = "local_fs"), allow(unused))]
+    pub fn label(&self) -> &str {
+        self.label.as_ref()
+    }
+
     /// Returns the height of the button.
     pub fn height(&self, app: &AppContext) -> f32 {
         let appearance = Appearance::as_ref(app);

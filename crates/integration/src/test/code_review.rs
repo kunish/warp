@@ -6,14 +6,23 @@ use command::blocking::Command;
 use warp::features::FeatureFlag;
 use warp::integration_testing::code_review::{
     assert_code_review_anchor, assert_code_review_line_text, assert_code_review_loaded,
-    assert_code_review_scroll_region, scroll_code_review_to_deleted_range,
+    assert_code_review_scroll_region, assert_general_composer_overlay_present,
+    assert_inline_comment_block_count, assert_inline_composer_body,
+    assert_inline_composer_body_contains, assert_inline_composer_closed,
+    assert_inline_composer_focused, assert_inline_composer_height_grew,
+    assert_inline_composer_open, assert_inline_composer_primary_label,
+    assert_inline_composer_pushes_line_below, assert_inline_composer_save_disabled,
+    assert_inline_composer_shows_remove, assert_saved_comment_count, cancel_inline_composer,
+    capture_inline_composer_height, cmd_enter_inline_composer, escape_inline_composer,
+    open_general_composer, open_inline_composer, remove_inline_comment,
+    reopen_saved_inline_comment, save_inline_composer, scroll_code_review_to_deleted_range,
     scroll_code_review_to_footer, scroll_code_review_to_header, scroll_code_review_to_line,
-    ScrollRegion,
+    type_into_inline_composer, ScrollRegion,
 };
 use warp::integration_testing::terminal::wait_until_bootstrapped_single_pane_for_tab;
 use warp::integration_testing::view_getters::{single_terminal_view_for_tab, workspace_view};
 use warp::workspace::WorkspaceAction;
-use warpui_core::integration::{AssertionCallback, TestStep};
+use warpui_core::integration::{AssertionCallback, TestSetupUtils, TestStep};
 use warpui_core::{async_assert, App, WindowId};
 
 use super::new_builder;
@@ -646,6 +655,471 @@ pub fn test_code_review_scroll_preserved_second_file() -> Builder {
                 .add_assertion(assert_code_review_anchor(
                     SECOND_FILE_NAME,
                     multi_file_modified_line("second", MULTI_FILE_TARGET_LINE),
+                    None,
+                )),
+        )
+}
+
+// =====================================================================================
+// Inline comment composer tests (FeatureFlag::EmbeddedCodeReviewComments)
+// =====================================================================================
+//
+// These boot a hermetic code review on a single modified file and exercise the inline composer
+// (open/type/save/cancel/escape/reopen/remove) end-to-end, covering VAL-COMPOSER-001..014,016,017.
+// The composer is opened on a line within the modified region (10-80) so it is a current, on-screen
+// line in the diff editor.
+
+/// Line we open the inline composer on (within the modified region, near the top of the editor).
+const COMPOSER_LINE: usize = 20;
+
+fn setup_single_file_repo(utils: &mut TestSetupUtils) {
+    let test_dir = utils.test_dir();
+    let repo_dir = test_dir.join("repo");
+    fs::create_dir_all(&repo_dir).expect("should create repo subdirectory");
+    let repo_dir_string = repo_dir
+        .to_str()
+        .expect("repo directory should be valid utf-8");
+
+    write_all_rc_files_for_test(&test_dir, format!("cd {repo_dir_string}"));
+
+    fs::write(repo_dir.join(TEST_FILE_NAME), initial_committed_contents())
+        .expect("should write initial committed contents");
+    run_git(&repo_dir, &["init", "-b", "main"]);
+    run_git(&repo_dir, &["config", "user.email", "test@example.com"]);
+    run_git(&repo_dir, &["config", "user.name", "Warp Integration Test"]);
+    run_git(&repo_dir, &["add", TEST_FILE_NAME]);
+    run_git(&repo_dir, &["commit", "-m", "Initial commit"]);
+
+    fs::write(repo_dir.join(TEST_FILE_NAME), initial_diff_contents())
+        .expect("should write initial diff contents");
+}
+
+/// A loaded single-file code review with the inline-comments flag set to `flag_enabled`.
+fn composer_builder(flag_enabled: bool) -> Builder {
+    FeatureFlag::EmbeddedCodeReviewComments.set_enabled(flag_enabled);
+
+    new_builder()
+        .use_tmp_filesystem_for_test_root_directory()
+        .with_setup(setup_single_file_repo)
+        .with_step(wait_until_bootstrapped_single_pane_for_tab(0))
+        .with_step(
+            TestStep::new("Wait for the terminal to detect the git repository")
+                .set_timeout(Duration::from_secs(20))
+                .add_assertion(assert_repo_detected()),
+        )
+        .with_step(
+            TestStep::new("Open the code review panel")
+                .with_action(|app, window_id, _| open_code_review_panel(app, window_id)),
+        )
+        .with_step(
+            TestStep::new("Wait for the code review panel to load file diffs")
+                .set_timeout(Duration::from_secs(20))
+                .add_assertion(assert_code_review_loaded()),
+        )
+}
+
+/// VAL-COMPOSER-001/002/012: opening the composer pushes the line below down, anchors at the
+/// clicked line, and opening a second composer leaves exactly one (anchored at the new line).
+pub fn test_code_review_composer_opens_inline_and_pushes_line() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_composer_pushes_line_below(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                )),
+        )
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE + 5)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE + 5),
+                ))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
+        )
+}
+
+/// VAL-COMPOSER-004/014: the primary button is disabled while empty, enabled after typing; saving
+/// closes the composer, restores the layout, and persists the comment. Empty/whitespace can't save.
+pub fn test_code_review_composer_save_via_button() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_composer_save_disabled(TEST_FILE_NAME, true)),
+        )
+        // Whitespace-only drafts cannot enable the button.
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "   ")
+                .add_assertion(assert_inline_composer_save_disabled(TEST_FILE_NAME, true)),
+        )
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "looks good")
+                .add_assertion(assert_inline_composer_body(TEST_FILE_NAME, "   looks good"))
+                .add_assertion(assert_inline_composer_save_disabled(TEST_FILE_NAME, false)),
+        )
+        .with_step(
+            save_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_saved_comment_count(1)),
+        )
+}
+
+/// VAL-COMPOSER-013: typed input routes into the focused composer and does not edit the code line.
+/// On open, the composer's inner editor takes focus (so keystrokes route to it, not the read-only
+/// diff); the draft captures typed input while the underlying code line stays unchanged.
+pub fn test_code_review_composer_typing_routes_to_composer() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250))
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                // The composer's inner editor holds focus, so typed input routes to it (not code).
+                .add_assertion(assert_inline_composer_focused(TEST_FILE_NAME, true)),
+        )
+        // Real typed input dispatched at the window must not mutate the read-only diff line.
+        .with_step(
+            TestStep::new("Typed input does not edit the read-only diff")
+                .set_timeout(Duration::from_secs(10))
+                .with_typed_characters(&["h", "e", "l", "l", "o"])
+                .add_assertion(assert_code_review_line_text(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    modified_line_text(COMPOSER_LINE),
+                )),
+        )
+        // The draft captures input and remains the only place the text lands.
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "routed to composer")
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_body_contains(
+                    TEST_FILE_NAME,
+                    "routed to composer",
+                ))
+                .add_assertion(assert_code_review_line_text(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    modified_line_text(COMPOSER_LINE),
+                )),
+        )
+}
+
+/// VAL-COMPOSER-005: Cmd/Ctrl+Enter saves the composer (closes + persists), like the button.
+pub fn test_code_review_composer_cmd_enter_saves() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                )),
+        )
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "saved by keyboard").add_assertion(
+                assert_inline_composer_body(TEST_FILE_NAME, "saved by keyboard"),
+            ),
+        )
+        .with_step(
+            cmd_enter_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_saved_comment_count(1)),
+        )
+}
+
+/// VAL-COMPOSER-006/007/008: Cancel closes and restores; Escape on an empty draft closes; Escape on
+/// a non-empty draft keeps the composer open.
+pub fn test_code_review_composer_cancel_and_escape() -> Builder {
+    composer_builder(true)
+        // Cancel closes + restores layout.
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
+        )
+        .with_step(
+            cancel_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_saved_comment_count(0)),
+        )
+        // Escape on an empty draft closes.
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                )),
+        )
+        .with_step(
+            escape_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0)),
+        )
+        // Escape on a non-empty draft does NOT close.
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                )),
+        )
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "keep me")
+                .add_assertion(assert_inline_composer_body(TEST_FILE_NAME, "keep me")),
+        )
+        .with_step(
+            escape_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
+        )
+}
+
+/// VAL-COMPOSER-009/010: reopening a saved comment shows the prefilled inline editor with
+/// "Update"/Remove; Remove deletes it from the batch and closes the composer.
+pub fn test_code_review_composer_reopen_and_remove() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                )),
+        )
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "original body")
+                .add_assertion(assert_inline_composer_body(TEST_FILE_NAME, "original body")),
+        )
+        .with_step(
+            save_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_saved_comment_count(1)),
+        )
+        .with_step(
+            reopen_saved_inline_comment()
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_composer_body(TEST_FILE_NAME, "original body"))
+                .add_assertion(assert_inline_composer_primary_label(
+                    TEST_FILE_NAME,
+                    "Update",
+                ))
+                .add_assertion(assert_inline_composer_shows_remove(TEST_FILE_NAME, true)),
+        )
+        .with_step(
+            remove_inline_comment(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_saved_comment_count(0)),
+        )
+}
+
+/// VAL-COMPOSER-011: with the flag OFF, opening the composer uses the floating overlay (no inline
+/// comment block is created in the content tree, so lines below are not pushed down).
+pub fn test_code_review_composer_floating_when_flag_off() -> Builder {
+    composer_builder(false).with_step(
+        open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+            .set_timeout(Duration::from_secs(10))
+            .set_retries(2)
+            .add_assertion(assert_inline_composer_open(
+                TEST_FILE_NAME,
+                Some(COMPOSER_LINE),
+            ))
+            .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0)),
+    )
+}
+
+/// VAL-COMPOSER-016: the composer height tracks the draft; growing it reflows the line below by the
+/// same delta.
+pub fn test_code_review_composer_height_tracks_content() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_composer_pushes_line_below(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                )),
+        )
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "one line")
+                .set_timeout(Duration::from_secs(10)),
+        )
+        .with_step(capture_inline_composer_height(
+            TEST_FILE_NAME,
+            COMPOSER_LINE,
+        ))
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "\nline two\nline three\nline four")
+                .set_timeout(Duration::from_secs(10)),
+        )
+        .with_step(
+            assert_inline_composer_height_grew(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2),
+        )
+}
+
+/// VAL-COMPOSER-017: with the flag ON, the general/diffset composer stays a header overlay and does
+/// NOT create an inline comment block in the diff editor.
+pub fn test_code_review_general_composer_stays_overlay() -> Builder {
+    composer_builder(true).with_step(
+        open_general_composer()
+            .set_timeout(Duration::from_secs(10))
+            .set_retries(2)
+            .add_assertion(assert_general_composer_overlay_present(true))
+            .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0)),
+    )
+}
+
+/// VAL-COMPOSER-003: the inline composer is part of the in-tree content (a real comment block
+/// anchored at its line), not a fixed overlay: after scrolling the code review it stays anchored at
+/// the same line and still reserves inline space there (a fixed overlay would detach from the line).
+pub fn test_code_review_composer_scrolls_with_line() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_composer_pushes_line_below(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                )),
+        )
+        .with_step(
+            scroll_code_review_to_line(TEST_FILE_NAME, COMPOSER_LINE + 30)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        // After scrolling, the composer is still the in-tree block anchored at its line and still
+        // reserves inline space (it travelled with the content rather than pinning to the viewport).
+        .with_step(
+            TestStep::new("Composer stays anchored in-tree after scroll")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_composer_pushes_line_below(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                )),
+        )
+}
+
+/// VAL-ISOLATION-003: scroll anchoring is preserved while an inline comment block occupies space.
+/// Modeled on `test_code_review_scroll_anchor_preserved_when_inserting_above`, with a composer open.
+pub fn test_code_review_scroll_anchor_preserved_with_comment_block() -> Builder {
+    FeatureFlag::CodeReviewScrollPreservation.set_enabled(true);
+    FeatureFlag::IncrementalAutoReload.set_enabled(true);
+    FeatureFlag::EmbeddedCodeReviewComments.set_enabled(true);
+
+    let inserted_line_text = inserted_lines("above")
+        .into_iter()
+        .next()
+        .expect("inserted lines should not be empty");
+
+    new_builder()
+        .use_tmp_filesystem_for_test_root_directory()
+        .with_setup(setup_single_file_repo)
+        .with_step(wait_until_bootstrapped_single_pane_for_tab(0))
+        .with_step(
+            TestStep::new("Wait for the terminal to detect the git repository")
+                .set_timeout(Duration::from_secs(20))
+                .add_assertion(assert_repo_detected()),
+        )
+        .with_step(
+            TestStep::new("Open the code review panel")
+                .with_action(|app, window_id, _| open_code_review_panel(app, window_id)),
+        )
+        .with_step(
+            TestStep::new("Wait for the code review panel to load file diffs")
+                .set_timeout(Duration::from_secs(20))
+                .add_assertion(assert_code_review_loaded()),
+        )
+        // Open a composer near the target so an inline comment block occupies space.
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, TARGET_LINE_NUMBER)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
+        )
+        .with_step(scroll_code_review_to_target_line())
+        .with_step(mutate_test_file(INSERT_ABOVE_LINE_NUMBER, "above"))
+        .with_step(
+            TestStep::new("Wait for code review to reflect the inserted lines")
+                .set_timeout(Duration::from_secs(20))
+                .add_assertion(assert_code_review_line_text(
+                    TEST_FILE_NAME,
+                    INSERT_ABOVE_LINE_NUMBER,
+                    inserted_line_text,
+                )),
+        )
+        .with_step(
+            TestStep::new("Wait for code review to preserve the visible anchor text")
+                .set_timeout(Duration::from_secs(20))
+                .add_assertion(assert_code_review_anchor(
+                    TEST_FILE_NAME,
+                    modified_line_text(TARGET_LINE_NUMBER),
                     None,
                 )),
         )

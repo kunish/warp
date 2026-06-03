@@ -99,6 +99,19 @@ async fn await_outer_layout(app: &mut App, editor: &ViewHandle<CodeEditorView>) 
     app.read(|ctx| outer_rs.as_ref(ctx).layout_complete()).await;
 }
 
+/// Return the composer to a quiescent state at the end of a test: close it (tearing down the inline
+/// comment block and stopping the layout-observe that re-measures it) and await the final layout so
+/// no background relayout is still in flight when the test future returns.
+async fn teardown_composer(app: &mut App, editor: &ViewHandle<CodeEditorView>) {
+    editor.update(app, |view, ctx| {
+        view.active_comment_editor.update(ctx, |composer, ctx| {
+            use crate::code::editor::comment_editor::CommentEditorAction;
+            composer.handle_action(&CommentEditorAction::CloseEditor, ctx);
+        });
+    });
+    settle_layout(app, editor).await;
+}
+
 fn line_offset(app: &App, editor: &ViewHandle<CodeEditorView>, line: usize) -> f32 {
     app.read(|ctx| {
         editor
@@ -173,6 +186,8 @@ fn test_inline_composer_pushes_lines_down_when_flag_on() {
             (delta - block_height).abs() < 1.0,
             "line below should shift down by the composer height: delta={delta}, block_height={block_height}"
         );
+
+        teardown_composer(&mut app, &editor).await;
     });
 }
 
@@ -212,6 +227,8 @@ fn test_inline_composer_not_inline_when_flag_off() {
             (line_3 - baseline_line_3).abs() < 1.0,
             "line below must not shift while the flag is off: baseline={baseline_line_3}, after={line_3}"
         );
+
+        teardown_composer(&mut app, &editor).await;
     });
 }
 
@@ -258,6 +275,8 @@ fn test_inline_composer_cancel_restores_layout() {
             (line_3 - baseline_line_3).abs() < 1.0,
             "layout should be restored after cancel: baseline={baseline_line_3}, after={line_3}"
         );
+
+        teardown_composer(&mut app, &editor).await;
     });
 }
 
