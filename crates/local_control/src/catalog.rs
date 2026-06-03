@@ -155,6 +155,8 @@ pub enum ActionResultSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionMetadata {
     pub kind: ActionKind,
+    /// Stable public action identifier exposed through discovery, help, and wire
+    /// payloads, such as `tab.create`.
     pub name: String,
     pub implementation_status: ActionImplementationStatus,
     pub risk_tier: RiskTier,
@@ -205,6 +207,9 @@ macro_rules! define_action_catalog {
         }
     )+ $(,)?) => {
         /// Stable protocol name for every approved `warpctrl` action.
+        ///
+        /// These names are user-visible as CLI/API action identifiers, so they
+        /// should be treated as stable public contract strings.
         #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
         pub enum ActionKind {
             $(

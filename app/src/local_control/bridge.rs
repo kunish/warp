@@ -5,12 +5,13 @@
 use ::local_control::auth::CredentialGrant;
 use ::local_control::{
     ActionKind, ControlError, ErrorCode, InstanceId, RequestEnvelope, ResponseEnvelope,
-    PROTOCOL_VERSION,
 };
 use warpui::{Entity, ModelContext, SingletonEntity};
 
 use crate::local_control::handlers::{layout, metadata};
-use crate::local_control::permissions::{ensure_action_allowed, ensure_feature_enabled};
+use crate::local_control::permissions::{
+    ensure_action_allowed, ensure_feature_enabled, ensure_protocol_version,
+};
 use crate::local_control::resolver::validate_action_params;
 
 /// WarpUI model that executes already-authenticated local-control actions.
@@ -42,14 +43,8 @@ impl LocalControlBridge {
         if let Err(error) = ensure_feature_enabled() {
             return ResponseEnvelope::error(request.request_id, error);
         }
-        if request.protocol_version != PROTOCOL_VERSION {
-            return ResponseEnvelope::error(
-                request.request_id,
-                ControlError::new(
-                    ErrorCode::ProtocolVersionUnsupported,
-                    format!("unsupported protocol version {}", request.protocol_version),
-                ),
-            );
+        if let Err(error) = ensure_protocol_version(request.protocol_version) {
+            return ResponseEnvelope::error(request.request_id, error);
         }
         if let Err(error) = validate_action_params(&request.action) {
             return ResponseEnvelope::error(request.request_id, error);
@@ -69,46 +64,25 @@ impl LocalControlBridge {
                 ),
             );
         }
+        if let Err(error) =
+            ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)
+        {
+            return ResponseEnvelope::error(request.request_id, error);
+        }
         match request.action.kind {
-            ActionKind::InstanceList => {
-                if let Err(error) =
-                    ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)
-                {
-                    return ResponseEnvelope::error(request.request_id, error);
-                }
-                match metadata::instance(&self.instance_id) {
-                    Ok(data) => ResponseEnvelope::ok(request.request_id, data),
-                    Err(error) => ResponseEnvelope::error(request.request_id, error),
-                }
-            }
-            ActionKind::AppPing => {
-                if let Err(error) =
-                    ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)
-                {
-                    return ResponseEnvelope::error(request.request_id, error);
-                }
-                match metadata::ping(&self.instance_id) {
-                    Ok(data) => ResponseEnvelope::ok(request.request_id, data),
-                    Err(error) => ResponseEnvelope::error(request.request_id, error),
-                }
-            }
-            ActionKind::AppVersion => {
-                if let Err(error) =
-                    ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)
-                {
-                    return ResponseEnvelope::error(request.request_id, error);
-                }
-                match metadata::version(&self.instance_id) {
-                    Ok(data) => ResponseEnvelope::ok(request.request_id, data),
-                    Err(error) => ResponseEnvelope::error(request.request_id, error),
-                }
-            }
+            ActionKind::InstanceList => match metadata::instance(&self.instance_id) {
+                Ok(data) => ResponseEnvelope::ok(request.request_id, data),
+                Err(error) => ResponseEnvelope::error(request.request_id, error),
+            },
+            ActionKind::AppPing => match metadata::ping(&self.instance_id) {
+                Ok(data) => ResponseEnvelope::ok(request.request_id, data),
+                Err(error) => ResponseEnvelope::error(request.request_id, error),
+            },
+            ActionKind::AppVersion => match metadata::version(&self.instance_id) {
+                Ok(data) => ResponseEnvelope::ok(request.request_id, data),
+                Err(error) => ResponseEnvelope::error(request.request_id, error),
+            },
             ActionKind::TabCreate => {
-                if let Err(error) =
-                    ensure_action_allowed(grant.invocation_context, request.action.kind, ctx)
-                {
-                    return ResponseEnvelope::error(request.request_id, error);
-                }
                 match layout::create_terminal_tab(&self.instance_id, &request.target, ctx) {
                     Ok(data) => ResponseEnvelope::ok(request.request_id, data),
                     Err(error) => ResponseEnvelope::error(request.request_id, error),

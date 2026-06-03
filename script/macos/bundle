@@ -558,15 +558,17 @@ EOF
   # Make the script executable
   chmod +x "$CLI_SCRIPT_PATH"
 
-  WARPCTRL_SCRIPT_PATH="$BUNDLED_RESOURCES_DIR/bin/warpctrl"
-  echo "Creating warpctrl wrapper script..."
-  cat > "$WARPCTRL_SCRIPT_PATH" << 'EOF'
+  if [[ ",$FEATURES," =~ ",warp_control_cli," ]]; then
+    WARPCTRL_SCRIPT_PATH="$BUNDLED_RESOURCES_DIR/bin/warpctrl"
+    echo "Creating warpctrl wrapper script..."
+    cat > "$WARPCTRL_SCRIPT_PATH" << 'EOF'
 #!/bin/bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec -a "$0" "$script_dir/../../MacOS/WARP_BIN_PLACEHOLDER" --warpctrl "$@"
 EOF
-  sed -i '' "s/WARP_BIN_PLACEHOLDER/$WARP_BIN/" "$WARPCTRL_SCRIPT_PATH"
-  chmod +x "$WARPCTRL_SCRIPT_PATH"
+    sed -i '' "s/WARP_BIN_PLACEHOLDER/$WARP_BIN/" "$WARPCTRL_SCRIPT_PATH"
+    chmod +x "$WARPCTRL_SCRIPT_PATH"
+  fi
 
   # Store the built artifact locations for GitHub Actions outputs.
   BINARY_PATH="target/$DEFAULT_TARGET/$TARGET_PROFILE_DIR/$WARP_BIN"
@@ -599,6 +601,10 @@ elif [[ "$ARTIFACT" == "cli" || "$ARTIFACT" == "warpctrl" ]]; then
   cp "target/$DEFAULT_TARGET/$TARGET_PROFILE_DIR/$WARP_BIN" "$OUT_DIR/$WARP_BIN"
 
   if [[ "$ARTIFACT" == "warpctrl" ]]; then
+    if [[ ! ",$FEATURES," =~ ",warp_control_cli," ]]; then
+      echo "warpctrl artifact requires the warp_control_cli feature" >&2
+      exit 1
+    fi
     WARPCTRL_SCRIPT_PATH="$OUT_DIR/warpctrl"
     echo "Creating warpctrl wrapper script at $WARPCTRL_SCRIPT_PATH"
     cat > "$WARPCTRL_SCRIPT_PATH" << 'EOF'

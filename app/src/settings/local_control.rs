@@ -210,15 +210,9 @@ impl Setting for LocalControlModeSetting {
 
     fn set_value_from_cloud_sync(
         &mut self,
-        new_value: Self::Value,
-        ctx: &mut ModelContext<Self::Group>,
+        _: Self::Value,
+        _: &mut ModelContext<Self::Group>,
     ) -> Result<()> {
-        let changed_in_storage = Self::write_value_to_secure_storage(&new_value, ctx)?;
-        if self.value() != &new_value || changed_in_storage {
-            self.inner = self.validate(new_value);
-            self.is_explicitly_set = true;
-            Self::emit_changed(ctx, settings::ChangeEventReason::CloudSync);
-        }
         Ok(())
     }
 

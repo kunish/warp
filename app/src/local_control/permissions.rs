@@ -1,13 +1,23 @@
 //! Permission checks that map invocation context onto local settings.
 use crate::features::FeatureFlag;
 use crate::settings::LocalControlSettings;
-use ::local_control::{ActionKind, ControlError, ErrorCode, InvocationContext};
+use ::local_control::{ActionKind, ControlError, ErrorCode, InvocationContext, PROTOCOL_VERSION};
 use warpui::{ModelContext, SingletonEntity};
 
 use crate::local_control::LocalControlBridge;
 
 pub(super) fn warp_control_cli_enabled() -> bool {
     FeatureFlag::WarpControlCli.is_enabled()
+}
+
+pub(super) fn ensure_protocol_version(protocol_version: u32) -> Result<(), ControlError> {
+    if protocol_version == PROTOCOL_VERSION {
+        return Ok(());
+    }
+    Err(ControlError::new(
+        ErrorCode::ProtocolVersionUnsupported,
+        format!("unsupported protocol version {protocol_version}"),
+    ))
 }
 
 pub(super) fn ensure_feature_enabled() -> Result<(), ControlError> {

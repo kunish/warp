@@ -10,7 +10,7 @@ use settings::Setting as _;
 use warp_core::features::FeatureFlag;
 
 use super::{
-    capabilities, ensure_feature_enabled, ensure_settings_allow_action,
+    capabilities, ensure_feature_enabled, ensure_protocol_version, ensure_settings_allow_action,
     outside_warp_control_enabled_for_settings, require_active_window_id, validate_action_params,
     validate_loopback_headers, validate_tab_create_target,
 };
@@ -20,6 +20,16 @@ fn settings_with_mode(mode: LocalControlMode) -> LocalControlSettings {
     LocalControlSettings {
         local_control_mode: LocalControlModeSetting::new(Some(mode)),
     }
+}
+
+#[test]
+fn protocol_version_helper_rejects_unsupported_versions() {
+    ensure_protocol_version(::local_control::PROTOCOL_VERSION)
+        .expect("current version is accepted");
+
+    let err = ensure_protocol_version(::local_control::PROTOCOL_VERSION + 1)
+        .expect_err("future protocol version is rejected");
+    assert_eq!(err.code, ErrorCode::ProtocolVersionUnsupported);
 }
 
 #[test]

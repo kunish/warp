@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::discovery::InstanceId;
 use crate::protocol::{
     ActionKind, ControlError, ErrorCode, ExecutionContextProof, InvocationContext,
+    PermissionCategory,
 };
 
 /// Bearer token used to authorize a single scoped local-control credential.
@@ -15,6 +16,10 @@ use crate::protocol::{
 pub struct AuthToken(String);
 
 impl AuthToken {
+    /// Generates a bearer secret from 32 bytes of operating-system CSPRNG output.
+    ///
+    /// Local-control bearer tokens are authentication material, so they use
+    /// `OsRng` instead of a deterministic or fast userspace PRNG.
     pub fn generate() -> Self {
         let mut bytes = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut bytes);
@@ -132,6 +137,7 @@ pub struct CredentialGrant {
     pub credential_id: String,
     pub instance_id: InstanceId,
     pub action: ActionKind,
+    pub permission_category: PermissionCategory,
     pub invocation_context: InvocationContext,
     pub authenticated_user: AuthenticatedUserGrant,
     pub issued_at: DateTime<Utc>,
@@ -158,6 +164,7 @@ impl CredentialGrant {
             credential_id: format!("cred_{}", Uuid::new_v4().simple()),
             instance_id,
             action,
+            permission_category: metadata.permission_category,
             invocation_context,
             authenticated_user: AuthenticatedUserGrant {
                 required: metadata.authenticated_user.required,
@@ -186,6 +193,15 @@ impl CredentialGrant {
             ));
         }
         let metadata = action.metadata();
+        if self.permission_category != metadata.permission_category {
+            return Err(ControlError::new(
+                ErrorCode::InsufficientPermissions,
+                format!(
+                    "{} requires a different local-control permission category",
+                    action.as_str()
+                ),
+            ));
+        }
         if metadata.requires_authenticated_user && self.authenticated_user.subject.is_none() {
             return Err(ControlError::new(
                 ErrorCode::AuthenticatedUserRequired,

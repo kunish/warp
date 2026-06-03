@@ -47,7 +47,7 @@ Required security gates:
 The first implementation slice should include the protected enablement gate, credential issuance checks, and app-side permission-category enforcement even if the only mutating action initially implemented is `tab.create`. Shipping `tab.create` without the enablement and validation architecture would create the wrong foundation for the full catalog.
 ### 1. Protocol crate and stable envelope
 Create a small shared protocol crate or equivalent shared module used by both the app server and the `warpctrl` command-mode client. It should define:
-- Protocol version metadata.
+- A request protocol version used as a defensive schema guard for stale copied JSON, stale wrappers, and future external clients, not as a normal compatibility-negotiation mechanism between separately versioned CLI and GUI binaries.
 - Discovery/health response types.
 - Execution-context proof/request types for verified Warp-terminal invocations versus external invocations.
 - Action metadata describing state/data category, required permission grant, `requires_authenticated_user`, allowed execution contexts, and target families.
@@ -455,7 +455,7 @@ sequenceDiagram
 
     CLI->>REG: Read local instance records
     CLI->>PROC: Health/protocol check for candidates
-    PROC-->>CLI: Instance metadata + compatibility
+    PROC-->>CLI: Instance metadata + defensive schema status
     CLI->>CLI: Resolve instance selector
     CLI->>BROKER: Request scoped credential for action + execution context
     BROKER-->>CLI: Grant or structured denial

@@ -34,7 +34,7 @@ use ::local_control::auth::{CredentialGrant, CredentialRequest, ScopedCredential
 use ::local_control::{
     ActionKind, AuthToken, ControlEndpoint, ControlError, ControlResponse, ErrorCode,
     ErrorResponseEnvelope, InstanceId, InstanceRecord, RegisteredInstance, RequestEnvelope,
-    ResponseEnvelope, PROTOCOL_VERSION,
+    ResponseEnvelope,
 };
 use axum::extract::rejection::JsonRejection;
 use axum::extract::State;
@@ -48,7 +48,7 @@ use warp_core::channel::ChannelState;
 use warpui::{Entity, ModelContext, ModelSpawner, SingletonEntity};
 
 pub use bridge::LocalControlBridge;
-use permissions::{ensure_action_allowed, ensure_feature_enabled};
+use permissions::{ensure_action_allowed, ensure_feature_enabled, ensure_protocol_version};
 
 /// Shared state made available to Axum handlers for one localhost server
 /// running inside Warp.
@@ -74,40 +74,58 @@ impl SingletonEntity for LocalControlServer {}
 
 impl LocalControlServer {
     pub fn new(ctx: &mut ModelContext<Self>) -> Self {
-        if !permissions::warp_control_cli_enabled() {
-            return Self {
-                _runtime: None,
-                control_endpoint: None,
-                registered_instance: None,
-            };
+        let mut server = Self {
+            _runtime: None,
+            control_endpoint: None,
+            registered_instance: None,
+        };
+        if let Err(error) = server.refresh_for_settings(ctx) {
+            log::warn!("Failed to refresh local-control server state: {error:#}");
         }
-        match Self::start(ctx) {
-            Ok(server) => {
-                ctx.subscribe_to_model(
-                    &crate::settings::LocalControlSettings::handle(ctx),
-                    |server, _, ctx| {
-                        if let Err(error) = server.refresh_discovery_record(ctx) {
-                            log::warn!(
-                                "Failed to refresh local-control discovery record: {error:#}"
-                            );
-                        }
-                    },
-                );
-                server
-            }
-            Err(error) => {
-                log::warn!("Failed to start local-control server: {error:#}");
-                Self {
-                    _runtime: None,
-                    control_endpoint: None,
-                    registered_instance: None,
+        ctx.subscribe_to_model(
+            &crate::settings::LocalControlSettings::handle(ctx),
+            |server, _, ctx| {
+                if let Err(error) = server.refresh_for_settings(ctx) {
+                    log::warn!("Failed to refresh local-control server state: {error:#}");
                 }
-            }
+            },
+        );
+        server
+    }
+
+    fn refresh_for_settings(&mut self, ctx: &mut ModelContext<Self>) -> Result<(), ControlError> {
+        if !permissions::warp_control_cli_enabled() {
+            self.stop();
+            return Ok(());
         }
+        let outside_warp_control_enabled =
+            crate::settings::LocalControlSettings::as_ref(ctx).outside_warp_control_enabled();
+        if !outside_warp_control_enabled {
+            self.stop();
+            return Ok(());
+        }
+        if self._runtime.is_some() {
+            return self.refresh_discovery_record(ctx);
+        }
+        *self = Self::start(ctx)?;
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        self.registered_instance = None;
+        self.control_endpoint = None;
+        self._runtime = None;
     }
 
     fn start(ctx: &mut ModelContext<Self>) -> Result<Self, ControlError> {
         ensure_feature_enabled()?;
+        if !crate::settings::LocalControlSettings::as_ref(ctx).outside_warp_control_enabled() {
+            return Ok(Self {
+                _runtime: None,
+                control_endpoint: None,
+                registered_instance: None,
+            });
+        }
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_io()
@@ -233,13 +251,10 @@ async fn handle_credential_request(
                 .into_response();
         }
     };
-    if request.protocol_version != PROTOCOL_VERSION {
+    if let Err(error) = ensure_protocol_version(request.protocol_version) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponseEnvelope::new(ControlError::new(
-                ErrorCode::ProtocolVersionUnsupported,
-                format!("unsupported protocol version {}", request.protocol_version),
-            ))),
+            Json(ErrorResponseEnvelope::new(error)),
         )
             .into_response();
     }
@@ -427,6 +442,12 @@ async fn handle_control_request(
     (status, Json(response)).into_response()
 }
 
+/// Performs browser-origin hardening for local-control endpoints.
+///
+/// These checks intentionally reject browser-style `Origin` requests and stale
+/// endpoint selections, but they are not an authorization boundary. Scoped
+/// bearer credentials and grant validation remain the authority for control
+/// requests.
 pub(crate) fn validate_loopback_headers(
     headers: &HeaderMap,
     expected_host: &str,
