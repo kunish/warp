@@ -996,3 +996,150 @@ pub fn assert_line_below_y_unchanged(file_path: impl Into<String>, line: usize) 
             },
         )
 }
+
+// --- Saved-comment inline rendering (VAL-SAVED-*, VAL-CROSS-*) ---------------------------------
+
+/// Seed a saved (Native) line comment directly into the batch at `line` of `file_path`, simulating
+/// an external/programmatic upsert (no composer interaction).
+pub fn seed_saved_line_comment(
+    file_path: impl Into<String>,
+    line: usize,
+    content: impl Into<String>,
+) -> TestStep {
+    let file_path = file_path.into();
+    let content = content.into();
+    TestStep::new("Seed saved line comment").with_action(move |app, window_id, _| {
+        let view = single_code_review_view(app, window_id);
+        view.update(app, |view, ctx| {
+            view.upsert_line_comment_for_test(&file_path, line, &content, false, ctx);
+        });
+    })
+}
+
+/// Seed an imported-from-GitHub line comment directly into the batch at `line` of `file_path`.
+pub fn seed_imported_line_comment(
+    file_path: impl Into<String>,
+    line: usize,
+    content: impl Into<String>,
+) -> TestStep {
+    let file_path = file_path.into();
+    let content = content.into();
+    TestStep::new("Seed imported GitHub line comment").with_action(move |app, window_id, _| {
+        let view = single_code_review_view(app, window_id);
+        view.update(app, |view, ctx| {
+            view.upsert_line_comment_for_test(&file_path, line, &content, true, ctx);
+        });
+    })
+}
+
+/// Jump to the first saved line comment via the panel "jump to comment" path, scrolling its inline
+/// card into view.
+pub fn jump_to_first_saved_comment() -> TestStep {
+    TestStep::new("Jump to first saved comment").with_action(move |app, window_id, _| {
+        let view = single_code_review_view(app, window_id);
+        view.update(app, |view, ctx| {
+            view.jump_to_first_comment_for_test(ctx);
+        });
+    })
+}
+
+/// Seed a General (review-level) comment into the batch. It must stay panel-only (never inline).
+pub fn seed_general_comment(content: impl Into<String>) -> TestStep {
+    let content = content.into();
+    TestStep::new("Seed general comment").with_action(move |app, window_id, _| {
+        let view = single_code_review_view(app, window_id);
+        view.update(app, |view, ctx| {
+            view.upsert_general_comment_for_test(&content, ctx);
+        });
+    })
+}
+
+/// Assert the set of comment ids rendered inline in `file_path` exactly matches the set of
+/// non-outdated line-targeted comments in the batch (the single source of truth) — proving the
+/// inline cards and the bottom panel stay in parity, and that File/General comments never leak in.
+pub fn assert_inline_panel_parity(file_path: impl Into<String>) -> AssertionCallback {
+    let file_path = file_path.into();
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            let inline: std::collections::HashSet<_> = view
+                .inline_comment_ids_for_test(&file_path, ctx)
+                .into_iter()
+                .collect();
+            let batch: std::collections::HashSet<_> = view
+                .batch_line_comment_ids_for_test(ctx)
+                .into_iter()
+                .collect();
+            if inline == batch {
+                AssertionOutcome::Success
+            } else {
+                AssertionOutcome::failure(format!(
+                    "inline cards ({}) do not match batch line comments ({})",
+                    inline.len(),
+                    batch.len()
+                ))
+            }
+        })
+    })
+}
+
+/// Assert the bottom panel's total comment count equals `expected` (covers File/General comments,
+/// which stay panel-only while only line comments render inline).
+pub fn assert_panel_total_comments(expected: usize) -> AssertionCallback {
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            let actual = view.panel_total_comments_for_test(ctx);
+            async_assert!(
+                actual == expected,
+                "expected panel total comments == {expected}, got {actual}"
+            )
+        })
+    })
+}
+
+/// Assert the number of inline saved cards rendered in `file_path` equals `expected`.
+pub fn assert_inline_card_count(
+    file_path: impl Into<String>,
+    expected: usize,
+) -> AssertionCallback {
+    let file_path = file_path.into();
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            let actual = view.inline_comment_ids_for_test(&file_path, ctx).len();
+            async_assert!(
+                actual == expected,
+                "expected {expected} inline saved card(s) for {file_path:?}, got {actual}"
+            )
+        })
+    })
+}
+
+/// Assert whether the active composer for `file_path` is editing an imported-from-GitHub comment
+/// (so the reopened editor surfaces the GitHub affordance).
+pub fn assert_composer_imported(file_path: impl Into<String>, expected: bool) -> AssertionCallback {
+    let file_path = file_path.into();
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            match view.composer_is_imported_for_test(&file_path, ctx) {
+                Some(actual) if actual == expected => AssertionOutcome::Success,
+                Some(actual) => AssertionOutcome::failure(format!(
+                    "expected composer imported == {expected}, got {actual}"
+                )),
+                None => {
+                    AssertionOutcome::failure(format!("editor for {file_path:?} not available"))
+                }
+            }
+        })
+    })
+}

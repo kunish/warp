@@ -307,6 +307,12 @@ fn register_tests() -> HashMap<&'static str, BoxedBuilderFn> {
     register_test!(test_code_review_general_composer_stays_overlay);
     register_test!(test_code_review_composer_scrolls_with_line);
     register_test!(test_code_review_scroll_anchor_preserved_with_comment_block);
+    register_test!(test_code_review_saved_comment_renders_inline_after_save);
+    register_test!(test_code_review_saved_comment_external_upsert_renders_inline);
+    register_test!(test_code_review_saved_comment_panel_parity);
+    register_test!(test_code_review_saved_comment_full_lifecycle);
+    register_test!(test_code_review_saved_comment_imported_from_github);
+    register_test!(test_code_review_saved_comment_jump_scrolls_card_into_view);
     register_test!(test_alt_screen_context_menu_with_sgr_with_mouse_reporting);
     register_test!(test_alt_screen_context_menu_with_sgr_without_mouse_reporting);
     register_test!(test_alt_screen_context_menu_without_sgr_with_mouse_reporting);

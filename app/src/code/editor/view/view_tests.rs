@@ -462,3 +462,310 @@ fn test_interaction_state_prevents_editing() {
         assert_eq!(text.as_str(), "abc");
     });
 }
+
+// --- Saved comments rendered inline (VAL-SAVED-*) ---------------------------------------------
+
+/// Pump the executor until the outer editor and every saved inline card's body editor have finished
+/// laying out, so each inline comment block has converged on its measured height.
+async fn settle_saved_layout(app: &mut App, editor: &ViewHandle<CodeEditorView>) {
+    for _ in 0..8 {
+        let states = app.read(|ctx| {
+            let view = editor.as_ref(ctx);
+            let mut states = vec![view.model.as_ref(ctx).render_state().clone()];
+            for inline in view.inline_comments.values() {
+                states.push(inline.as_ref(ctx).inner_render_state(ctx));
+            }
+            states
+        });
+        for state in states {
+            app.read(|ctx| state.as_ref(ctx).layout_complete()).await;
+        }
+    }
+}
+
+fn comment_block_count(app: &App, editor: &ViewHandle<CodeEditorView>) -> usize {
+    app.read(|ctx| {
+        editor
+            .as_ref(ctx)
+            .model
+            .as_ref(ctx)
+            .render_state()
+            .as_ref(ctx)
+            .comment_block_count()
+    })
+}
+
+/// VAL-SAVED-001/002: with the flag ON, a saved line comment renders as an inline block that
+/// reserves real vertical space at its line and pushes the line below it down by the block height.
+#[test]
+fn test_saved_comment_renders_inline_and_pushes_lines_down() {
+    App::test((), |mut app| async move {
+        let _embedded = FeatureFlag::EmbeddedCodeReviewComments.override_enabled(true);
+
+        let (_window, editor) = initialize_editor(&mut app);
+        editor.update(&mut app, |view, ctx| {
+            view.reset(InitialBufferState::plain_text(MULTILINE_CONTENT), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+        let baseline_line_3 = line_offset(&app, &editor, 3);
+        assert!(comment_block_height(&app, &editor, 2).is_none());
+
+        let id_a = CommentId::new();
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(
+                vec![editor_comment(id_a, 2, "INLINE BODY ALPHA")].into_iter(),
+                ctx,
+            );
+        });
+        settle_saved_layout(&mut app, &editor).await;
+
+        let block_height = comment_block_height(&app, &editor, 2)
+            .expect("a saved inline block should exist at the comment line");
+        assert!(
+            block_height > 0.0,
+            "the saved card must reserve positive height, got {block_height}"
+        );
+        assert_eq!(comment_block_count(&app, &editor), 1);
+
+        let shifted_line_3 = line_offset(&app, &editor, 3);
+        let delta = shifted_line_3 - baseline_line_3;
+        assert!(
+            (delta - block_height).abs() < 1.0,
+            "line below should shift down by the card height: delta={delta}, block_height={block_height}"
+        );
+    });
+}
+
+/// VAL-SAVED-003: three saved comments on distinct lines each render as their own inline block.
+#[test]
+fn test_multiple_saved_comments_render_each_at_own_line() {
+    App::test((), |mut app| async move {
+        let _embedded = FeatureFlag::EmbeddedCodeReviewComments.override_enabled(true);
+
+        let (_window, editor) = initialize_editor(&mut app);
+        editor.update(&mut app, |view, ctx| {
+            view.reset(InitialBufferState::plain_text(MULTILINE_CONTENT), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+
+        let (id_a, id_b, id_c) = (CommentId::new(), CommentId::new(), CommentId::new());
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(
+                vec![
+                    editor_comment(id_a, 1, "alpha"),
+                    editor_comment(id_b, 3, "beta"),
+                    editor_comment(id_c, 5, "gamma"),
+                ]
+                .into_iter(),
+                ctx,
+            );
+        });
+        settle_saved_layout(&mut app, &editor).await;
+
+        assert_eq!(comment_block_count(&app, &editor), 3);
+        for line in [1usize, 3, 5] {
+            assert!(
+                comment_block_height(&app, &editor, line).is_some(),
+                "expected an inline block at line {line}"
+            );
+        }
+    });
+}
+
+/// VAL-SAVED-004: editing a saved comment updates the existing inline block in place (no duplicate).
+#[test]
+fn test_editing_saved_comment_updates_block_in_place() {
+    App::test((), |mut app| async move {
+        let _embedded = FeatureFlag::EmbeddedCodeReviewComments.override_enabled(true);
+
+        let (_window, editor) = initialize_editor(&mut app);
+        editor.update(&mut app, |view, ctx| {
+            view.reset(InitialBufferState::plain_text(MULTILINE_CONTENT), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+
+        let id_a = CommentId::new();
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(vec![editor_comment(id_a, 2, "before")].into_iter(), ctx);
+        });
+        settle_saved_layout(&mut app, &editor).await;
+        assert_eq!(comment_block_count(&app, &editor), 1);
+
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(
+                vec![editor_comment(id_a, 2, "after edit")].into_iter(),
+                ctx,
+            );
+        });
+        settle_saved_layout(&mut app, &editor).await;
+
+        assert_eq!(
+            comment_block_count(&app, &editor),
+            1,
+            "editing must not create a second inline block"
+        );
+        let body = app.read(|ctx| {
+            editor
+                .as_ref(ctx)
+                .inline_comments
+                .get(&id_a)
+                .expect("comment still present")
+                .as_ref(ctx)
+                .rendered_body(ctx)
+        });
+        assert_eq!(body.trim(), "after edit");
+    });
+}
+
+/// VAL-SAVED-005: deleting a saved comment removes its inline block and restores the line layout.
+#[test]
+fn test_deleting_saved_comment_removes_block_and_restores_layout() {
+    App::test((), |mut app| async move {
+        let _embedded = FeatureFlag::EmbeddedCodeReviewComments.override_enabled(true);
+
+        let (_window, editor) = initialize_editor(&mut app);
+        editor.update(&mut app, |view, ctx| {
+            view.reset(InitialBufferState::plain_text(MULTILINE_CONTENT), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+        let baseline_line_3 = line_offset(&app, &editor, 3);
+
+        let id_a = CommentId::new();
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(vec![editor_comment(id_a, 2, "to delete")].into_iter(), ctx);
+        });
+        settle_saved_layout(&mut app, &editor).await;
+        assert_eq!(comment_block_count(&app, &editor), 1);
+        assert!(line_offset(&app, &editor, 3) > baseline_line_3);
+
+        // Remove the comment from the fed set (mirrors a batch delete).
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(Vec::new().into_iter(), ctx);
+        });
+        settle_saved_layout(&mut app, &editor).await;
+
+        assert_eq!(comment_block_count(&app, &editor), 0);
+        let restored_line_3 = line_offset(&app, &editor, 3);
+        assert!(
+            (restored_line_3 - baseline_line_3).abs() < 1.0,
+            "layout should be restored after delete: baseline={baseline_line_3}, after={restored_line_3}"
+        );
+    });
+}
+
+/// VAL-SAVED-012 / VAL-ISOLATION-004 (saved half): with the flag OFF, a saved comment produces NO
+/// inline block.
+#[test]
+fn test_saved_comment_no_inline_block_when_flag_off() {
+    App::test((), |mut app| async move {
+        let _embedded = FeatureFlag::EmbeddedCodeReviewComments.override_enabled(false);
+
+        let (_window, editor) = initialize_editor(&mut app);
+        editor.update(&mut app, |view, ctx| {
+            view.reset(InitialBufferState::plain_text(MULTILINE_CONTENT), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+        let baseline_line_3 = line_offset(&app, &editor, 3);
+
+        let id_a = CommentId::new();
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(vec![editor_comment(id_a, 2, "alpha")].into_iter(), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+
+        assert_eq!(comment_block_count(&app, &editor), 0);
+        let line_3 = line_offset(&app, &editor, 3);
+        assert!(
+            (line_3 - baseline_line_3).abs() < 1.0,
+            "no line should shift while the flag is off"
+        );
+    });
+}
+
+/// VAL-SAVED-015: an imported-from-GitHub saved comment renders inline as a saved card (with its
+/// GitHub affordance) without panicking or thrashing layout.
+#[test]
+fn test_imported_saved_comment_renders_inline() {
+    App::test((), |mut app| async move {
+        let _embedded = FeatureFlag::EmbeddedCodeReviewComments.override_enabled(true);
+
+        let (_window, editor) = initialize_editor(&mut app);
+        editor.update(&mut app, |view, ctx| {
+            view.reset(InitialBufferState::plain_text(MULTILINE_CONTENT), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+
+        let id_a = CommentId::new();
+        let mut comment = editor_comment(id_a, 2, "imported body");
+        comment.origin = crate::code_review::comments::CommentOrigin::ImportedFromGitHub(Box::new(
+            crate::code_review::comments::ImportedCommentDetails {
+                author: "octocat".to_string(),
+                github_comment_id: "1".to_string(),
+                github_parent_id: None,
+                html_url: None,
+            },
+        ));
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(vec![comment].into_iter(), ctx);
+        });
+        settle_saved_layout(&mut app, &editor).await;
+
+        assert_eq!(comment_block_count(&app, &editor), 1);
+    });
+}
+
+/// VAL-COMPOSER-015: opening the composer on a line that already has a saved card REPLACES the card
+/// (exactly one inline block — the composer), and cancelling restores the single saved card.
+#[test]
+fn test_composer_replaces_saved_card_on_same_line() {
+    App::test((), |mut app| async move {
+        let _inline = FeatureFlag::InlineCodeReview.override_enabled(true);
+        let _embedded = FeatureFlag::EmbeddedCodeReviewComments.override_enabled(true);
+
+        let (_window, editor) = initialize_editor(&mut app);
+        editor.update(&mut app, |view, ctx| {
+            view.reset(InitialBufferState::plain_text(MULTILINE_CONTENT), ctx);
+        });
+        await_outer_layout(&mut app, &editor).await;
+
+        let id_a = CommentId::new();
+        editor.update(&mut app, |view, ctx| {
+            view.set_comment_locations(
+                vec![editor_comment(id_a, 2, "saved body")].into_iter(),
+                ctx,
+            );
+        });
+        settle_saved_layout(&mut app, &editor).await;
+        assert_eq!(comment_block_count(&app, &editor), 1);
+
+        // Open the composer on the same line: the card is replaced, not stacked.
+        editor.update(&mut app, |view, ctx| {
+            view.handle_action(
+                &CodeEditorViewAction::NewCommentOnLine {
+                    line: current_line(2),
+                },
+                ctx,
+            );
+        });
+        settle_layout(&mut app, &editor).await;
+        assert_eq!(
+            comment_block_count(&app, &editor),
+            1,
+            "composer must replace the saved card, not stack with it"
+        );
+
+        // Cancel: the single saved card returns.
+        editor.update(&mut app, |view, ctx| {
+            view.active_comment_editor.update(ctx, |composer, ctx| {
+                use crate::code::editor::comment_editor::CommentEditorAction;
+                composer.handle_action(&CommentEditorAction::CloseEditor, ctx);
+            });
+        });
+        settle_saved_layout(&mut app, &editor).await;
+        assert_eq!(
+            comment_block_count(&app, &editor),
+            1,
+            "the saved card returns after the composer is cancelled"
+        );
+    });
+}

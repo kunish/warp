@@ -203,6 +203,13 @@ impl CommentEditor {
         self.show_remove_button
     }
 
+    /// Whether the composer is editing a comment imported from GitHub (shows the GitHub indicator).
+    /// Test-only accessor.
+    #[cfg(feature = "integration_tests")]
+    pub fn is_imported_for_test(&self) -> bool {
+        self.is_imported_comment
+    }
+
     /// Whether the inner text editor (where typing lands) currently holds focus. Test-only.
     #[cfg(feature = "integration_tests")]
     pub fn inner_editor_focused_for_test(&self, app: &AppContext) -> bool {

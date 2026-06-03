@@ -1070,7 +1070,7 @@ fn test_inline_comment_block_is_isolated_per_view() {
         ));
         let block = CommentBlock::new(block_location, item);
         model_a.update(&mut app, |model, ctx| {
-            model.set_inline_comment_block(Some(block), ctx);
+            model.set_inline_comment_blocks(vec![block], ctx);
         });
         layout_model(&mut app, &model_a).await;
         layout_model(&mut app, &model_b).await;

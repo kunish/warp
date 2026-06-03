@@ -6,21 +6,24 @@ use command::blocking::Command;
 use warp::features::FeatureFlag;
 use warp::integration_testing::code_review::{
     assert_code_review_anchor, assert_code_review_line_text, assert_code_review_loaded,
-    assert_code_review_scroll_region, assert_floating_overlay_present,
-    assert_general_composer_overlay_present, assert_inline_comment_block_body,
-    assert_inline_comment_block_count, assert_inline_composer_body,
-    assert_inline_composer_body_contains, assert_inline_composer_closed,
-    assert_inline_composer_focused, assert_inline_composer_height_capped,
-    assert_inline_composer_height_grew, assert_inline_composer_height_shrank,
-    assert_inline_composer_height_unchanged, assert_inline_composer_open,
-    assert_inline_composer_primary_label, assert_inline_composer_pushes_line_below,
-    assert_inline_composer_save_disabled, assert_inline_composer_shows_remove,
-    assert_line_below_y_unchanged, assert_saved_comment_count, cancel_inline_composer,
+    assert_code_review_scroll_region, assert_composer_imported, assert_floating_overlay_present,
+    assert_general_composer_overlay_present, assert_inline_card_count,
+    assert_inline_comment_block_body, assert_inline_comment_block_count,
+    assert_inline_composer_body, assert_inline_composer_body_contains,
+    assert_inline_composer_closed, assert_inline_composer_focused,
+    assert_inline_composer_height_capped, assert_inline_composer_height_grew,
+    assert_inline_composer_height_shrank, assert_inline_composer_height_unchanged,
+    assert_inline_composer_open, assert_inline_composer_primary_label,
+    assert_inline_composer_pushes_line_below, assert_inline_composer_save_disabled,
+    assert_inline_composer_shows_remove, assert_inline_panel_parity, assert_line_below_y_unchanged,
+    assert_panel_total_comments, assert_saved_comment_count, cancel_inline_composer,
     capture_inline_composer_height, capture_line_below_baseline, cmd_enter_inline_composer,
-    escape_inline_composer, open_general_composer, open_inline_composer, remove_inline_comment,
-    reopen_saved_inline_comment, save_inline_composer, scroll_code_review_to_deleted_range,
-    scroll_code_review_to_footer, scroll_code_review_to_header, scroll_code_review_to_line,
-    set_inline_composer_body, type_into_inline_composer, ScrollRegion,
+    escape_inline_composer, jump_to_first_saved_comment, open_general_composer,
+    open_inline_composer, remove_inline_comment, reopen_saved_inline_comment, save_inline_composer,
+    scroll_code_review_to_deleted_range, scroll_code_review_to_footer,
+    scroll_code_review_to_header, scroll_code_review_to_line, seed_general_comment,
+    seed_imported_line_comment, seed_saved_line_comment, set_inline_composer_body,
+    type_into_inline_composer, ScrollRegion,
 };
 use warp::integration_testing::terminal::wait_until_bootstrapped_single_pane_for_tab;
 use warp::integration_testing::view_getters::{single_terminal_view_for_tab, workspace_view};
@@ -779,7 +782,9 @@ pub fn test_code_review_composer_save_via_button() -> Builder {
             save_inline_composer(TEST_FILE_NAME)
                 .set_timeout(Duration::from_secs(10))
                 .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
-                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                // After save the composer closes and the persisted comment renders inline as a
+                // saved card (one block remains at the line).
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
                 .add_assertion(assert_saved_comment_count(1)),
         )
 }
@@ -849,7 +854,9 @@ pub fn test_code_review_composer_cmd_enter_saves() -> Builder {
             cmd_enter_inline_composer(TEST_FILE_NAME)
                 .set_timeout(Duration::from_secs(10))
                 .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
-                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                // After save the composer closes and the persisted comment renders inline as a
+                // saved card (one block remains at the line).
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
                 .add_assertion(assert_saved_comment_count(1)),
         )
 }
@@ -1204,5 +1211,263 @@ pub fn test_code_review_scroll_anchor_preserved_with_comment_block() -> Builder 
                     modified_line_text(TARGET_LINE_NUMBER),
                     None,
                 )),
+        )
+}
+
+/// VAL-SAVED-001/002/006: composing and saving a line comment closes the composer and renders the
+/// persisted comment INLINE as a saved card that occupies real space (pushing the line below down),
+/// shows the saved body, and stays in parity with the bottom panel.
+pub fn test_code_review_saved_comment_renders_inline_after_save() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                )),
+        )
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, "saved card body alpha").add_assertion(
+                assert_inline_composer_body(TEST_FILE_NAME, "saved card body alpha"),
+            ),
+        )
+        .with_step(
+            save_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_saved_comment_count(1))
+                // The persisted comment renders inline as exactly one saved card hosting the body.
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "saved card body alpha",
+                ))
+                // The saved card occupies real space, pushing the line below it down.
+                .add_assertion(assert_inline_composer_pushes_line_below(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                ))
+                .add_assertion(assert_inline_panel_parity(TEST_FILE_NAME)),
+        )
+}
+
+/// VAL-SAVED-003/009: comments upserted into the batch externally (no composer interaction) each
+/// render inline at their own line, and multiple saved comments coexist as distinct cards.
+pub fn test_code_review_saved_comment_external_upsert_renders_inline() -> Builder {
+    composer_builder(true)
+        .with_step(seed_saved_line_comment(
+            TEST_FILE_NAME,
+            COMPOSER_LINE,
+            "alpha note",
+        ))
+        .with_step(seed_saved_line_comment(
+            TEST_FILE_NAME,
+            COMPOSER_LINE + 8,
+            "beta note",
+        ))
+        .with_step(
+            seed_saved_line_comment(TEST_FILE_NAME, COMPOSER_LINE + 16, "gamma note")
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Three externally-upserted comments each render inline")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_saved_comment_count(3))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 3))
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 3))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "alpha note",
+                ))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE + 8,
+                    "beta note",
+                ))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE + 16,
+                    "gamma note",
+                ))
+                .add_assertion(assert_inline_panel_parity(TEST_FILE_NAME)),
+        )
+}
+
+/// VAL-SAVED-007/008: only line comments render inline; File/General comments stay panel-only. The
+/// inline cards stay in parity with the batch's line comments while the bottom panel total counts
+/// every comment (line + general).
+pub fn test_code_review_saved_comment_panel_parity() -> Builder {
+    composer_builder(true)
+        .with_step(seed_saved_line_comment(
+            TEST_FILE_NAME,
+            COMPOSER_LINE,
+            "line note",
+        ))
+        .with_step(
+            seed_general_comment("general review note")
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Line comment renders inline; general stays panel-only")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_saved_comment_count(2))
+                // Only the line comment renders inline.
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_panel_parity(TEST_FILE_NAME))
+                // The panel still accounts for both the line and the general comment.
+                .add_assertion(assert_panel_total_comments(2)),
+        )
+}
+
+/// VAL-CROSS-001/004 + VAL-SAVED-004/005: the full lifecycle works end-to-end — compose -> persist
+/// (inline card) -> reopen via the panel Edit path (inline composer replaces the card) -> edit in
+/// place (no duplicate) -> delete (block removed, layout restored).
+pub fn test_code_review_saved_comment_full_lifecycle() -> Builder {
+    composer_builder(true)
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                )),
+        )
+        .with_step(type_into_inline_composer(TEST_FILE_NAME, "lifecycle v1"))
+        .with_step(
+            save_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "lifecycle v1",
+                )),
+        )
+        // Reopen via the panel "Edit" path: the composer replaces the saved card (one block only).
+        .with_step(
+            reopen_saved_inline_comment()
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_composer_body(TEST_FILE_NAME, "lifecycle v1"))
+                .add_assertion(assert_inline_composer_primary_label(
+                    TEST_FILE_NAME,
+                    "Update",
+                )),
+        )
+        .with_step(set_inline_composer_body(
+            TEST_FILE_NAME,
+            "lifecycle v2 edited",
+        ))
+        .with_step(
+            save_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                // Editing updates in place: still exactly one saved card, with the new body.
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_saved_comment_count(1))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "lifecycle v2 edited",
+                )),
+        )
+        // Delete removes the inline block and restores the layout.
+        .with_step(
+            reopen_saved_inline_comment()
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_shows_remove(TEST_FILE_NAME, true)),
+        )
+        .with_step(
+            remove_inline_comment(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_saved_comment_count(0)),
+        )
+}
+
+/// VAL-SAVED-015: a comment imported from GitHub renders inline as a saved card, and reopening it
+/// surfaces the imported-from-GitHub affordance in the composer.
+pub fn test_code_review_saved_comment_imported_from_github() -> Builder {
+    composer_builder(true)
+        .with_step(
+            seed_imported_line_comment(TEST_FILE_NAME, COMPOSER_LINE, "imported from GH")
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Imported comment renders inline as a saved card")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "imported from GH",
+                )),
+        )
+        .with_step(
+            reopen_saved_inline_comment()
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                // Reopening an imported comment surfaces the GitHub affordance.
+                .add_assertion(assert_composer_imported(TEST_FILE_NAME, true)),
+        )
+}
+
+/// VAL-CROSS-005: jumping to a saved comment from the panel scrolls its inline card into view (the
+/// card travels with its line and remains rendered after the jump).
+pub fn test_code_review_saved_comment_jump_scrolls_card_into_view() -> Builder {
+    composer_builder(true)
+        .with_step(seed_saved_line_comment(
+            TEST_FILE_NAME,
+            TARGET_LINE_NUMBER,
+            "jump target note",
+        ))
+        // Scroll far away so the comment's inline card is off-screen.
+        .with_step(
+            scroll_code_review_to_line(TEST_FILE_NAME, INSERT_ABOVE_LINE_NUMBER)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            jump_to_first_saved_comment()
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Inline card is scrolled into view at the comment line")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                // Jumping routes through the panel handler and scrolls to the comment line; the
+                // card travels with its line and is still rendered as a single inline block.
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
         )
 }

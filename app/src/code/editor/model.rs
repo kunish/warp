@@ -3850,20 +3850,18 @@ impl CodeEditorModel {
         });
     }
 
-    /// Set or clear the per-view inline comment block on this view's [`RenderState`]. Passing
-    /// `Some(block)` reserves inline space at the block's anchor line; passing `None` removes any
-    /// inline comment block. This lives on the per-view render state only (never the shared
-    /// buffer), so it cannot leak into other views of the same file.
-    pub fn set_inline_comment_block(
+    /// Replace the full set of per-view inline comment blocks on this view's [`RenderState`] with
+    /// `blocks` (the saved-comment cards plus, when open, the active composer). An empty vector
+    /// removes all inline comment blocks. This lives on the per-view render state only (never the
+    /// shared buffer), so it cannot leak into other views of the same file.
+    pub fn set_inline_comment_blocks(
         &mut self,
-        block: Option<CommentBlock>,
+        blocks: Vec<CommentBlock>,
         ctx: &mut ModelContext<Self>,
     ) {
-        self.render_state
-            .update(ctx, |render_state, _| match block {
-                Some(block) => render_state.set_comment_blocks(vec![block]),
-                None => render_state.clear_comment_blocks(),
-            });
+        self.render_state.update(ctx, |render_state, _| {
+            render_state.set_comment_blocks(blocks)
+        });
     }
 }
 

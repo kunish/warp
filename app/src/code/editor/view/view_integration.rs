@@ -10,7 +10,9 @@ use warpui::{AppContext, TypedActionView, ViewContext};
 use super::{CodeEditorView, CodeEditorViewAction};
 use crate::code::editor::comment_editor::CommentEditorAction;
 use crate::code::editor::comments::PendingComment;
-use crate::code::editor::embedded_comment::LaidOutEmbeddedCommentSpace;
+use crate::code::editor::embedded_comment::{
+    LaidOutEmbeddedCommentSpace, LaidOutInlineSavedComment,
+};
 use crate::code::editor::line::EditorLineLocation;
 
 fn current_line_location(line_number: usize) -> EditorLineLocation {
@@ -74,6 +76,19 @@ impl CodeEditorView {
         self.active_comment_editor
             .as_ref(app)
             .show_remove_button_for_test()
+    }
+
+    /// The set of comment ids that currently have a reconciled inline saved-comment view (the cards
+    /// rendered inline). Used to assert parity with the bottom panel's line-targeted comments.
+    pub fn inline_comment_ids_for_test(&self) -> Vec<crate::code_review::comments::CommentId> {
+        self.inline_comments.keys().copied().collect()
+    }
+
+    /// Whether the active composer is editing a comment imported from GitHub (shows the indicator).
+    pub fn composer_is_imported_for_test(&self, app: &AppContext) -> bool {
+        self.active_comment_editor
+            .as_ref(app)
+            .is_imported_for_test()
     }
 
     /// Number of inline comment blocks in this view's per-view render state.
@@ -186,8 +201,13 @@ impl CodeEditorView {
             .render_state()
             .as_ref(app)
             .comment_block_item(RenderLineLocation::Current(LineCount::from(line)))?;
+        // The block may host the active composer (`LaidOutEmbeddedCommentSpace`) or a saved-comment
+        // card (`LaidOutInlineSavedComment`); resolve the body through whichever is present.
+        if let Some(composer) = item.as_any().downcast_ref::<LaidOutEmbeddedCommentSpace>() {
+            return composer.rendered_body_for_test(app);
+        }
         item.as_any()
-            .downcast_ref::<LaidOutEmbeddedCommentSpace>()?
+            .downcast_ref::<LaidOutInlineSavedComment>()?
             .rendered_body_for_test(app)
     }
 

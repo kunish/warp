@@ -654,6 +654,15 @@ impl CodeReviewView {
         Some(line)
     }
 
+    /// Jump to the first saved line comment via the panel "jump to comment" path
+    /// ([`Self::handle_jump_to_comment_location`]), scrolling its inline card into view. Returns the
+    /// 1-based line jumped to, or `None` if no saved line comment exists.
+    pub fn jump_to_first_comment_for_test(&mut self, ctx: &mut ViewContext<Self>) -> Option<usize> {
+        let (comment_id, line) = self.first_line_comment_for_test(ctx)?;
+        self.handle_jump_to_comment_location(&comment_id, ctx);
+        Some(line)
+    }
+
     /// The rendered body text of the inline comment block anchored at the given 1-based current
     /// line of `path`, resolved through the block's hosted child.
     pub fn inline_comment_block_body_for_test(
@@ -721,5 +730,129 @@ impl CodeReviewView {
         self.code_editor_for_test(path, ctx)?
             .as_ref(ctx)
             .floating_overlay_offset_for_test(ctx)
+    }
+
+    /// The set of comment ids rendered inline (as saved cards) in `path`'s editor.
+    pub fn inline_comment_ids_for_test(&self, path: &str, ctx: &AppContext) -> Vec<CommentId> {
+        self.code_editor_for_test(path, ctx)
+            .map(|editor| editor.as_ref(ctx).inline_comment_ids_for_test())
+            .unwrap_or_default()
+    }
+
+    /// Whether the active composer for `path` is editing a comment imported from GitHub.
+    pub fn composer_is_imported_for_test(&self, path: &str, ctx: &AppContext) -> Option<bool> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .composer_is_imported_for_test(ctx),
+        )
+    }
+
+    /// The bottom panel's total comment count (all targets), via its debug state.
+    pub fn panel_total_comments_for_test(&self, ctx: &AppContext) -> usize {
+        self.comment_list_view
+            .as_ref(ctx)
+            .debug_state(ctx)
+            .total_comments
+    }
+
+    /// The ids of non-outdated line-targeted comments currently in the batch (the set that should
+    /// render inline). Parity check: this must equal `inline_comment_ids_for_test`.
+    pub fn batch_line_comment_ids_for_test(&self, ctx: &AppContext) -> Vec<CommentId> {
+        self.active_comment_model
+            .as_ref()
+            .map(|model| {
+                model.read(ctx, |batch, _| {
+                    batch
+                        .comments
+                        .iter()
+                        .filter(|comment| {
+                            !comment.outdated
+                                && matches!(
+                                    comment.target,
+                                    AttachedReviewCommentTarget::Line { .. }
+                                )
+                        })
+                        .map(|comment| comment.id)
+                        .collect()
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    /// Seed a saved comment directly into the active batch (simulating an external/import upsert,
+    /// no composer interaction). When `imported` is true the comment carries a GitHub origin so the
+    /// reopened editor shows the imported-from-GitHub indicator. Returns the new comment id.
+    pub fn upsert_line_comment_for_test(
+        &mut self,
+        path: &str,
+        line_number: usize,
+        content: &str,
+        imported: bool,
+        ctx: &mut ViewContext<Self>,
+    ) -> Option<CommentId> {
+        use crate::code_review::comments::{
+            AttachedReviewComment, CommentOrigin, ImportedCommentDetails, LineDiffContent,
+        };
+
+        let repo_path = self.repo_path()?.clone();
+        let absolute_file_path = repo_path.join(path);
+        let line = EditorLineLocation::Current {
+            line_number: LineCount::from(line_number),
+            line_range: LineCount::from(line_number)..LineCount::from(line_number + 1),
+        };
+        let origin = if imported {
+            CommentOrigin::ImportedFromGitHub(Box::new(ImportedCommentDetails {
+                author: "octocat".to_string(),
+                github_comment_id: "1".to_string(),
+                github_parent_id: None,
+                html_url: None,
+            }))
+        } else {
+            CommentOrigin::Native
+        };
+        let comment = AttachedReviewComment {
+            id: CommentId::new(),
+            content: content.to_string(),
+            target: AttachedReviewCommentTarget::Line {
+                absolute_file_path,
+                line,
+                content: LineDiffContent::from_content(&format!("+{content}\n")),
+            },
+            last_update_time: chrono::Local::now(),
+            base: None,
+            head: None,
+            outdated: false,
+            origin,
+        };
+        let id = comment.id;
+        let model = self.active_comment_model.as_ref()?.clone();
+        model.update(ctx, |batch, ctx| batch.upsert_comment(comment, ctx));
+        Some(id)
+    }
+
+    /// Seed a General (review-level, non-line) comment into the batch. Used to verify File/General
+    /// comments stay panel-only and never render inline.
+    pub fn upsert_general_comment_for_test(
+        &mut self,
+        content: &str,
+        ctx: &mut ViewContext<Self>,
+    ) -> Option<CommentId> {
+        use crate::code_review::comments::AttachedReviewComment;
+
+        let comment = AttachedReviewComment {
+            id: CommentId::new(),
+            content: content.to_string(),
+            target: AttachedReviewCommentTarget::General,
+            last_update_time: chrono::Local::now(),
+            base: None,
+            head: None,
+            outdated: false,
+            origin: Default::default(),
+        };
+        let id = comment.id;
+        let model = self.active_comment_model.as_ref()?.clone();
+        model.update(ctx, |batch, ctx| batch.upsert_comment(comment, ctx));
+        Some(id)
     }
 }
