@@ -360,9 +360,10 @@ impl ConversationUsageView {
 
         // Spend renders as either at-cost dollars or credits, never both:
         // transparent pricing swaps the legacy credits rows for the dollar
-        // rows. Tokens, tool calls, models, and timing are unaffected and
-        // render the same way in both views (below this block).
-        match SpendDisplay::current() {
+        // rows and additionally surfaces token totals (below). Tool calls,
+        // models, and timing are unaffected and render the same in both views.
+        let spend_display = SpendDisplay::current();
+        match spend_display {
             SpendDisplay::Dollars => {
                 self.append_dollar_spend_rows(&mut labels, &mut values, appearance)
             }
@@ -371,18 +372,23 @@ impl ConversationUsageView {
             }
         }
 
-        for (label, tokens) in [
-            ("Input tokens", self.usage_info.total_input_tokens),
-            ("Output tokens", self.usage_info.total_output_tokens),
-            ("Cache read tokens", self.usage_info.total_cache_read_tokens),
-            (
-                "Cache write tokens",
-                self.usage_info.total_cache_write_tokens,
-            ),
-        ] {
-            if tokens > 0 {
-                labels.push(render_label_text(label, appearance));
-                values.push(render_value_text(tokens.separate_with_commas(), appearance));
+        // Aggregate token totals belong to the transparent at-cost view only. In the
+        // credits view the footer matches its pre-transparent-pricing form, which did
+        // not surface these rows.
+        if matches!(spend_display, SpendDisplay::Dollars) {
+            for (label, tokens) in [
+                ("Input tokens", self.usage_info.total_input_tokens),
+                ("Output tokens", self.usage_info.total_output_tokens),
+                ("Cache read tokens", self.usage_info.total_cache_read_tokens),
+                (
+                    "Cache write tokens",
+                    self.usage_info.total_cache_write_tokens,
+                ),
+            ] {
+                if tokens > 0 {
+                    labels.push(render_label_text(label, appearance));
+                    values.push(render_value_text(tokens.separate_with_commas(), appearance));
+                }
             }
         }
 
