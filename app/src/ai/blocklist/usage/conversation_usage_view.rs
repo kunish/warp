@@ -104,9 +104,9 @@ impl ConversationUsageInfo {
 }
 
 /// Formats an at-cost amount given in USD cents as a dollar string. Uses four
-/// decimal places for sub-cent per-turn amounts so fractional costs stay
-/// visible, and two places otherwise.
-fn format_cents_as_dollars(cents: f64) -> String {
+/// decimal places for sub-cent amounts so fractional costs stay visible, and
+/// two places otherwise.
+pub(crate) fn format_cents_as_dollars(cents: f64) -> String {
     let dollars = cents / 100.0;
     if dollars != 0.0 && dollars.abs() < 0.01 {
         format!("${dollars:.4}")
