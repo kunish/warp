@@ -570,9 +570,6 @@ impl CustomEndpointModal {
             EditorEvent::Escape => {
                 self.cancel(ctx);
             }
-            EditorEvent::Edited(_) => {
-                ctx.notify();
-            }
             _ => {}
         }
     }
