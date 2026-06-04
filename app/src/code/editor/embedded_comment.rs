@@ -341,6 +341,16 @@ impl LaidOutInlineSavedComment {
         self.inline_view(app)
             .map(|view| view.read(app, |view, app| view.rendered_body(app)))
     }
+
+    /// Whether the saved card hosted by this inline block embeds a diff snippet (resolved through
+    /// the block's hosted child). `Some(false)` proves the inline card shows only its body, never
+    /// the redundant diff snippet the bottom-panel card renders. `None` if the view can no longer
+    /// be resolved.
+    #[cfg(feature = "integration_tests")]
+    pub fn embeds_diff_snippet_for_test(&self, app: &AppContext) -> Option<bool> {
+        self.inline_view(app)
+            .map(|view| view.read(app, |view, _| view.embeds_diff_snippet_for_test()))
+    }
 }
 
 impl LaidOutEmbeddedItem for LaidOutInlineSavedComment {

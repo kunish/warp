@@ -1122,6 +1122,32 @@ pub fn assert_inline_card_count(
     })
 }
 
+/// Assert that the inline saved cards in `file_path`'s editor render exactly `expected` bodies (as a
+/// multiset), regardless of the cards' resolved render lines. Used where a relocation (e.g. a
+/// diff-mode switch) may re-anchor cards to a different line, but each comment must survive with its
+/// body intact.
+pub fn assert_inline_card_bodies(
+    file_path: impl Into<String>,
+    expected: Vec<String>,
+) -> AssertionCallback {
+    let file_path = file_path.into();
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            let mut actual = view.inline_card_bodies_for_test(&file_path, ctx);
+            let mut expected_sorted = expected.clone();
+            actual.sort();
+            expected_sorted.sort();
+            async_assert!(
+                actual == expected_sorted,
+                "expected inline card bodies {expected_sorted:?} for {file_path:?}, got {actual:?}"
+            )
+        })
+    })
+}
+
 /// Assert whether the active composer for `file_path` is editing an imported-from-GitHub comment
 /// (so the reopened editor surfaces the GitHub affordance).
 pub fn assert_composer_imported(file_path: impl Into<String>, expected: bool) -> AssertionCallback {
@@ -1358,4 +1384,116 @@ pub fn assert_line_content_y_unchanged(file_path: impl Into<String>, line: usize
                 })
             },
         )
+}
+
+// --- Inline saved-comment integration coverage gaps (VAL-SAVED-011/012/014/016/017, VAL-CROSS-002/003) ---
+
+/// Assert the gutter add-comment affordance is reachable on changed lines in `file_path`'s editor
+/// (the comment button is enabled and the inline-review flag is on), so opening the composer is
+/// reachable via real gutter navigation.
+pub fn assert_gutter_comment_affordance_available(
+    file_path: impl Into<String>,
+) -> AssertionCallback {
+    let file_path = file_path.into();
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            match view.comment_button_available_for_test(&file_path, ctx) {
+                Some(true) => AssertionOutcome::Success,
+                Some(false) => AssertionOutcome::failure(
+                    "expected the gutter add-comment affordance to be available".to_string(),
+                ),
+                None => {
+                    AssertionOutcome::failure(format!("editor for {file_path:?} not available"))
+                }
+            }
+        })
+    })
+}
+
+/// Assert the saved inline card anchored at `line` of `file_path` shows its body but embeds NO
+/// diff snippet (the inline card never renders the redundant snippet the bottom-panel card shows).
+pub fn assert_inline_card_has_no_diff_snippet(
+    file_path: impl Into<String>,
+    line: usize,
+) -> AssertionCallback {
+    let file_path = file_path.into();
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            match view.inline_card_embeds_diff_snippet_for_test(&file_path, line, ctx) {
+                Some(false) => AssertionOutcome::Success,
+                Some(true) => AssertionOutcome::failure(format!(
+                    "expected the inline card at line {line} to embed no diff snippet"
+                )),
+                None => AssertionOutcome::failure(format!(
+                    "expected a saved inline card at line {line} for {file_path:?}, none present"
+                )),
+            }
+        })
+    })
+}
+
+/// Assert the editor's primary cursor for `file_path` is on the 1-based `line`.
+pub fn assert_cursor_on_line(file_path: impl Into<String>, line: usize) -> AssertionCallback {
+    let file_path = file_path.into();
+    Box::new(move |app, window_id| {
+        let Some(view) = try_single_code_review_view(app, window_id) else {
+            return AssertionOutcome::failure("code review view not yet available".to_string());
+        };
+        view.read(app, |view, ctx| {
+            match view.cursor_line_for_test(&file_path, ctx) {
+                Some(actual) if actual == line => AssertionOutcome::Success,
+                Some(actual) => AssertionOutcome::failure(format!(
+                    "expected cursor on line {line}, got {actual}"
+                )),
+                None => {
+                    AssertionOutcome::failure(format!("editor for {file_path:?} not available"))
+                }
+            }
+        })
+    })
+}
+
+/// Move the editor's primary cursor to the 1-based `line` of `file_path` (mirrors clicking a code
+/// line).
+pub fn set_cursor_to_code_line(file_path: impl Into<String>, line: usize) -> TestStep {
+    let file_path = file_path.into();
+    TestStep::new("Move cursor to a code line").with_action(move |app, window_id, _| {
+        let view = single_code_review_view(app, window_id);
+        view.update(app, |view, ctx| {
+            view.set_cursor_to_line_for_test(&file_path, line, ctx);
+        });
+    })
+}
+
+/// Narrow the soft-wrap width of the saved inline card anchored at `line` of `file_path`, forcing
+/// its body to re-wrap to more lines.
+pub fn set_inline_card_wrap_width(
+    file_path: impl Into<String>,
+    line: usize,
+    width: f32,
+) -> TestStep {
+    let file_path = file_path.into();
+    TestStep::new("Narrow inline card wrap width").with_action(move |app, window_id, _| {
+        let view = single_code_review_view(app, window_id);
+        view.update(app, |view, ctx| {
+            view.set_inline_card_wrap_width_for_test(&file_path, line, width, ctx);
+        });
+    })
+}
+
+/// Switch the diff mode to a different base (mirrors picking another base in the diff selector),
+/// driving a real diff recompute + comment reposition.
+pub fn switch_diff_mode() -> TestStep {
+    TestStep::new("Switch the code review diff mode").with_action(move |app, window_id, _| {
+        let view = single_code_review_view(app, window_id);
+        view.update(app, |view, ctx| {
+            view.switch_diff_mode_for_test(ctx);
+        });
+    })
 }

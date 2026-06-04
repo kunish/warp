@@ -1463,6 +1463,18 @@ impl RichTextEditorView {
             .update(ctx, |model, ctx| model.set_interaction_state(state, ctx));
     }
 
+    /// Override the editor's soft-wrap max width (test-only). The next layout re-wraps the body at
+    /// the new width, which lets tests force more wrap lines and observe the reflow.
+    #[cfg(feature = "integration_tests")]
+    pub fn set_max_width_for_test(
+        &mut self,
+        max_width: Option<Pixels>,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        self.max_width = max_width;
+        ctx.notify();
+    }
+
     /// Whether an edit operation (insert, backspace, change style, etc.) should be allowed. Edits are allowed if:
     /// * The view's [`InteractionState`] is `Editable`
     /// * The view is focused

@@ -6,27 +6,30 @@ use command::blocking::Command;
 use warp::features::FeatureFlag;
 use warp::integration_testing::code_review::{
     assert_code_review_anchor, assert_code_review_line_text, assert_code_review_loaded,
-    assert_code_review_scroll_region, assert_composer_imported, assert_floating_overlay_present,
-    assert_general_composer_overlay_present, assert_inline_card_bottom_in_viewport,
-    assert_inline_card_count, assert_inline_card_in_viewport,
-    assert_inline_card_taller_than_viewport, assert_inline_card_top_in_viewport,
-    assert_inline_comment_block_body, assert_inline_comment_block_count,
-    assert_inline_composer_body, assert_inline_composer_body_contains,
-    assert_inline_composer_closed, assert_inline_composer_focused,
-    assert_inline_composer_height_capped, assert_inline_composer_height_grew,
-    assert_inline_composer_height_shrank, assert_inline_composer_height_unchanged,
-    assert_inline_composer_open, assert_inline_composer_primary_label,
-    assert_inline_composer_pushes_line_below, assert_inline_composer_save_disabled,
-    assert_inline_composer_shows_remove, assert_inline_panel_parity, assert_line_below_y_unchanged,
-    assert_line_content_y_unchanged, assert_line_in_viewport, assert_panel_total_comments,
-    assert_saved_comment_count, cancel_inline_composer, capture_inline_composer_height,
-    capture_line_below_baseline, capture_line_content_y, cmd_enter_inline_composer,
-    escape_inline_composer, jump_to_first_saved_comment, mark_first_comment_outdated,
-    open_general_composer, open_inline_composer, remove_inline_comment,
-    reopen_saved_inline_comment, save_inline_composer, scroll_code_review_to_deleted_range,
-    scroll_code_review_to_footer, scroll_code_review_to_header, scroll_code_review_to_line,
-    seed_general_comment, seed_imported_line_comment, seed_saved_line_comment,
-    set_inline_composer_body, type_into_inline_composer, ScrollRegion,
+    assert_code_review_scroll_region, assert_composer_imported, assert_cursor_on_line,
+    assert_floating_overlay_present, assert_general_composer_overlay_present,
+    assert_gutter_comment_affordance_available, assert_inline_card_bottom_in_viewport,
+    assert_inline_card_count, assert_inline_card_has_no_diff_snippet,
+    assert_inline_card_in_viewport, assert_inline_card_taller_than_viewport,
+    assert_inline_card_top_in_viewport, assert_inline_comment_block_body,
+    assert_inline_comment_block_count, assert_inline_composer_body,
+    assert_inline_composer_body_contains, assert_inline_composer_closed,
+    assert_inline_composer_focused, assert_inline_composer_height_capped,
+    assert_inline_composer_height_grew, assert_inline_composer_height_shrank,
+    assert_inline_composer_height_unchanged, assert_inline_composer_open,
+    assert_inline_composer_primary_label, assert_inline_composer_pushes_line_below,
+    assert_inline_composer_save_disabled, assert_inline_composer_shows_remove,
+    assert_inline_panel_parity, assert_line_below_y_unchanged, assert_line_content_y_unchanged,
+    assert_line_in_viewport, assert_panel_total_comments, assert_saved_comment_count,
+    cancel_inline_composer, capture_inline_composer_height, capture_line_below_baseline,
+    capture_line_content_y, cmd_enter_inline_composer, escape_inline_composer,
+    jump_to_first_saved_comment, mark_first_comment_outdated, open_general_composer,
+    open_inline_composer, remove_inline_comment, reopen_saved_inline_comment, save_inline_composer,
+    scroll_code_review_to_deleted_range, scroll_code_review_to_footer,
+    scroll_code_review_to_header, scroll_code_review_to_line, seed_general_comment,
+    seed_imported_line_comment, seed_saved_line_comment, set_cursor_to_code_line,
+    set_inline_card_wrap_width, set_inline_composer_body, switch_diff_mode,
+    type_into_inline_composer, ScrollRegion,
 };
 use warp::integration_testing::terminal::wait_until_bootstrapped_single_pane_for_tab;
 use warp::integration_testing::view_getters::{single_terminal_view_for_tab, workspace_view};
@@ -1840,5 +1843,303 @@ pub fn test_code_review_saved_comment_jump_scrolls_card_into_view() -> Builder {
                     TARGET_LINE_NUMBER,
                     true,
                 )),
+        )
+}
+
+// =====================================================================================
+// Inline saved-comment integration coverage gaps
+// (VAL-SAVED-011/012/014/016/017, VAL-CROSS-002/003)
+// =====================================================================================
+//
+// These cover saved-comment behaviors whose functionality landed in F4/F5 but lacked dedicated
+// contract-level (integration) tests, so the user-testing validator can verify them.
+
+/// VAL-SAVED-011: a saved inline card survives a diff recompute. With a comment present, mutating
+/// the file BELOW the comment (so its line number stays stable) triggers a diff recompute; once the
+/// recompute lands, the card is still exactly one inline block at its line with the same body.
+pub fn test_code_review_saved_comment_survives_diff_recompute() -> Builder {
+    FeatureFlag::IncrementalAutoReload.set_enabled(true);
+    FeatureFlag::CodeReviewScrollPreservation.set_enabled(true);
+
+    let inserted_line_text = inserted_lines("below")
+        .into_iter()
+        .next()
+        .expect("inserted lines should not be empty");
+
+    composer_builder(true)
+        .with_step(
+            seed_saved_line_comment(TEST_FILE_NAME, COMPOSER_LINE, "survives recompute")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Saved card renders before the recompute")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "survives recompute",
+                )),
+        )
+        // Insert lines BELOW the comment so its line number stays stable, triggering a recompute.
+        .with_step(mutate_test_file(INSERT_BELOW_LINE_NUMBER, "below"))
+        .with_step(
+            TestStep::new("Wait for code review to reflect the inserted lines (recompute landed)")
+                .set_timeout(Duration::from_secs(20))
+                .add_assertion(assert_code_review_line_text(
+                    TEST_FILE_NAME,
+                    INSERT_BELOW_LINE_NUMBER,
+                    inserted_line_text,
+                )),
+        )
+        .with_step(
+            TestStep::new("Saved card survives the diff recompute (count 1, same body)")
+                .set_timeout(Duration::from_secs(15))
+                .set_retries(3)
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "survives recompute",
+                )),
+        )
+}
+
+/// VAL-SAVED-012: with the inline-comments flag OFF, a saved line comment yields NO inline block in
+/// the editor while the bottom panel still shows it (integration-level — the existing unit test is
+/// not contract-sufficient).
+pub fn test_code_review_saved_comment_flag_off_no_inline_block() -> Builder {
+    composer_builder(false)
+        .with_step(
+            seed_saved_line_comment(TEST_FILE_NAME, COMPOSER_LINE, "panel only when flag off")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Flag OFF: no inline block, but the panel still has the comment")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_saved_comment_count(1))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 0))
+                .add_assertion(assert_panel_total_comments(1)),
+        )
+}
+
+/// VAL-SAVED-014: a wrapping saved card reflows when its width changes. Narrowing the card's wrap
+/// width forces more wrap lines, so the card's reserved block height grows and the line below it
+/// shifts down by the same amount.
+pub fn test_code_review_saved_comment_reflows_on_width_change() -> Builder {
+    // A long single-line body that wraps; narrowing the wrap width forces additional wrap lines.
+    let wrapping_body = "This is a fairly long saved comment body that will wrap onto multiple \
+        lines once the card's available width is narrowed enough to force additional soft-wrap \
+        breaks across the rendered card.";
+    composer_builder(true)
+        .with_step(
+            seed_saved_line_comment(TEST_FILE_NAME, COMPOSER_LINE, wrapping_body)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Wrapping card renders before the width change")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
+        )
+        // Record the card's reserved height and the on-screen Y of the line below it.
+        .with_step(
+            capture_inline_composer_height(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2),
+        )
+        // Narrow the card's wrap width to force more wrap lines.
+        .with_step(
+            set_inline_card_wrap_width(TEST_FILE_NAME, COMPOSER_LINE, 120.0)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        // The card grew taller and the line below shifted down by the same delta.
+        .with_step(
+            assert_inline_composer_height_grew(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(3),
+        )
+}
+
+/// VAL-SAVED-016: switching the diff mode keeps each saved comment's inline block at its resolved
+/// line with the same body (the recompute + reposition the mode switch triggers preserves the
+/// cards).
+pub fn test_code_review_saved_comment_survives_diff_mode_switch() -> Builder {
+    composer_builder(true)
+        .with_step(seed_saved_line_comment(
+            TEST_FILE_NAME,
+            COMPOSER_LINE,
+            "mode switch alpha",
+        ))
+        .with_step(
+            seed_saved_line_comment(TEST_FILE_NAME, COMPOSER_LINE + 8, "mode switch beta")
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Both cards render before the diff-mode switch")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 2))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "mode switch alpha",
+                ))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE + 8,
+                    "mode switch beta",
+                )),
+        )
+        .with_step(switch_diff_mode().set_post_step_pause(Duration::from_millis(500)))
+        .with_step(
+            TestStep::new("Cards survive the diff-mode switch at their resolved lines, same body")
+                .set_timeout(Duration::from_secs(20))
+                .set_retries(4)
+                .add_assertion(assert_code_review_loaded())
+                .add_assertion(assert_panel_total_comments(2))
+                .add_assertion(assert_inline_card_count(TEST_FILE_NAME, 2))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 2))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "mode switch alpha",
+                ))
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE + 8,
+                    "mode switch beta",
+                ))
+                .add_assertion(assert_inline_panel_parity(TEST_FILE_NAME)),
+        )
+}
+
+/// VAL-SAVED-017: the inline saved card shows the comment body but embeds NO diff snippet (unlike
+/// the bottom-panel card). The rendered body is exactly the comment text (no snippet appended) and
+/// the card structurally embeds no diff-snippet element.
+pub fn test_code_review_saved_comment_has_no_embedded_diff_snippet() -> Builder {
+    composer_builder(true)
+        .with_step(
+            seed_saved_line_comment(TEST_FILE_NAME, COMPOSER_LINE, "body without snippet")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Inline card shows the body and embeds no diff snippet")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1))
+                // The card renders exactly the comment body (no diff snippet text appended)...
+                .add_assertion(assert_inline_comment_block_body(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                    "body without snippet",
+                ))
+                // ...and structurally embeds no diff-snippet element.
+                .add_assertion(assert_inline_card_has_no_diff_snippet(
+                    TEST_FILE_NAME,
+                    COMPOSER_LINE,
+                )),
+        )
+}
+
+/// VAL-CROSS-002: from a freshly loaded code review, the inline composer is reachable through real
+/// gutter navigation. The review loads, the gutter add-comment affordance is present/enabled on
+/// changed lines, and activating it (the `NewCommentOnLine` action the gutter button dispatches on
+/// click) opens the inline composer at that line.
+///
+/// A pixel-accurate synthetic gutter click within the nested viewported code-review list is not
+/// reliably observable in the headless harness (the gutter button only renders on hover and has no
+/// cached position id), so this asserts the affordance is rendered + enabled (reachable) and drives
+/// its real on-click action — see library/user-testing.md harness limitations.
+pub fn test_code_review_gutter_add_comment_opens_composer() -> Builder {
+    FeatureFlag::InlineCodeReview.set_enabled(true);
+    composer_builder(true)
+        .with_step(
+            TestStep::new("Code review loaded with the gutter add-comment affordance reachable")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_code_review_loaded())
+                .add_assertion(assert_gutter_comment_affordance_available(TEST_FILE_NAME)),
+        )
+        .with_step(
+            open_inline_composer(TEST_FILE_NAME, COMPOSER_LINE)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
+        )
+}
+
+/// VAL-CROSS-003: inline card events reach the child and the code editor's cursor/selection stays
+/// isolated from card interaction. Clicking a code line below the card lands the cursor there; the
+/// card's Edit affordance reaches the child (opens the prefilled composer); interacting with the
+/// card body (typing in the composer) leaves the code cursor unchanged; and the card's Cancel
+/// affordance reaches the child (closes the composer).
+pub fn test_code_review_inline_card_event_routing_and_cursor_isolation() -> Builder {
+    // A code line below the card, inside the modified region (10-80) so it is a visible line.
+    const CODE_LINE_BELOW: usize = COMPOSER_LINE + 20;
+    composer_builder(true)
+        .with_step(
+            seed_saved_line_comment(TEST_FILE_NAME, COMPOSER_LINE, "routing card body")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .set_post_step_pause(Duration::from_millis(250)),
+        )
+        .with_step(
+            TestStep::new("Saved card renders before interaction")
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
+        )
+        // Clicking a code line below the card lands the cursor on that line.
+        .with_step(
+            set_cursor_to_code_line(TEST_FILE_NAME, CODE_LINE_BELOW)
+                .set_post_step_pause(Duration::from_millis(100))
+                .add_assertion(assert_cursor_on_line(TEST_FILE_NAME, CODE_LINE_BELOW)),
+        )
+        // The card's Edit affordance reaches the child: the prefilled inline composer opens.
+        .with_step(
+            reopen_saved_inline_comment()
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_open(
+                    TEST_FILE_NAME,
+                    Some(COMPOSER_LINE),
+                ))
+                .add_assertion(assert_inline_composer_body(
+                    TEST_FILE_NAME,
+                    "routing card body",
+                )),
+        )
+        // Interacting with the card body (typing in the composer) leaves the code cursor unchanged.
+        .with_step(
+            type_into_inline_composer(TEST_FILE_NAME, " edited")
+                .add_assertion(assert_inline_composer_body(
+                    TEST_FILE_NAME,
+                    "routing card body edited",
+                ))
+                .add_assertion(assert_cursor_on_line(TEST_FILE_NAME, CODE_LINE_BELOW)),
+        )
+        // The card's Cancel affordance reaches the child: the composer closes (card restored).
+        .with_step(
+            cancel_inline_composer(TEST_FILE_NAME)
+                .set_timeout(Duration::from_secs(10))
+                .set_retries(2)
+                .add_assertion(assert_inline_composer_closed(TEST_FILE_NAME))
+                .add_assertion(assert_inline_comment_block_count(TEST_FILE_NAME, 1)),
         )
 }

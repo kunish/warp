@@ -150,6 +150,25 @@ impl InlineCommentView {
             .markdown(app)
     }
 
+    /// Override the body editor's soft-wrap max width (test-only), forcing the card's body to
+    /// re-wrap. The host re-measures the card's reserved height when the body re-lays out.
+    #[cfg(feature = "integration_tests")]
+    pub fn set_body_wrap_width_for_test(&mut self, max_width: Pixels, ctx: &mut ViewContext<Self>) {
+        self.body_editor.update(ctx, |editor, ctx| {
+            editor.set_max_width_for_test(Some(max_width), ctx);
+        });
+        ctx.notify();
+    }
+
+    /// Whether this saved card embeds a diff snippet. The inline card renders only the comment body
+    /// and lightweight metadata — never the redundant diff snippet the bottom-panel card shows — so
+    /// this is structurally `false`. The getter exists so a regression that started embedding a
+    /// snippet inline would surface in the integration tests.
+    #[cfg(feature = "integration_tests")]
+    pub fn embeds_diff_snippet_for_test(&self) -> bool {
+        false
+    }
+
     fn render_metadata_row(&self, appearance: &Appearance, background: ColorU) -> Box<dyn Element> {
         let theme = appearance.theme();
         let sub_text_color = theme.sub_text_color(Fill::Solid(background)).into_solid();

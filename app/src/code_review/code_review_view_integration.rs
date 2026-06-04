@@ -12,6 +12,7 @@ use crate::code::buffer_location::LocalOrRemotePath;
 use crate::code::editor::line::EditorLineLocation;
 use crate::code::editor::view::CodeEditorView;
 use crate::code_review::comments::{AttachedReviewCommentTarget, CommentId};
+use crate::code_review::diff_state::DiffMode;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodeReviewVisibleAnchorForTest {
@@ -923,6 +924,14 @@ impl CodeReviewView {
             .unwrap_or_default()
     }
 
+    /// The rendered body text of every inline saved card in `path`'s editor, regardless of the
+    /// cards' resolved render lines.
+    pub fn inline_card_bodies_for_test(&self, path: &str, ctx: &AppContext) -> Vec<String> {
+        self.code_editor_for_test(path, ctx)
+            .map(|editor| editor.as_ref(ctx).inline_card_bodies_for_test(ctx))
+            .unwrap_or_default()
+    }
+
     /// Whether the active composer for `path` is editing a comment imported from GitHub.
     pub fn composer_is_imported_for_test(&self, path: &str, ctx: &AppContext) -> Option<bool> {
         Some(
@@ -985,6 +994,12 @@ impl CodeReviewView {
             line_number: LineCount::from(line_number),
             line_range: LineCount::from(line_number)..LineCount::from(line_number + 1),
         };
+        // A real saved comment's diff content is the CODE line it is attached to (not the comment
+        // body), which is what re-anchoring after a diff recompute/mode-switch matches against.
+        // Fall back to the body only if the editor line text is not yet available.
+        let diff_line_text = self
+            .line_text_for_test(path, line_number, ctx)
+            .unwrap_or_else(|| content.to_string());
         let origin = if imported {
             CommentOrigin::ImportedFromGitHub(Box::new(ImportedCommentDetails {
                 author: "octocat".to_string(),
@@ -1001,7 +1016,7 @@ impl CodeReviewView {
             target: AttachedReviewCommentTarget::Line {
                 absolute_file_path,
                 line,
-                content: LineDiffContent::from_content(&format!("+{content}\n")),
+                content: LineDiffContent::from_content(&format!("+{diff_line_text}\n")),
             },
             last_update_time: chrono::Local::now(),
             base: None,
@@ -1038,5 +1053,85 @@ impl CodeReviewView {
         let model = self.active_comment_model.as_ref()?.clone();
         model.update(ctx, |batch, ctx| batch.upsert_comment(comment, ctx));
         Some(id)
+    }
+
+    /// Whether the gutter add-comment affordance is reachable on changed lines in `path`'s editor
+    /// (the comment-button display option is enabled and the inline-review flag is on).
+    pub fn comment_button_available_for_test(&self, path: &str, ctx: &AppContext) -> Option<bool> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .comment_button_available_for_test(),
+        )
+    }
+
+    /// Whether the saved inline card anchored at the 1-based current `line` of `path` embeds a diff
+    /// snippet. `Some(false)` proves the card renders only its body; `None` if no card is there.
+    pub fn inline_card_embeds_diff_snippet_for_test(
+        &self,
+        path: &str,
+        line: usize,
+        ctx: &AppContext,
+    ) -> Option<bool> {
+        self.code_editor_for_test(path, ctx)?
+            .as_ref(ctx)
+            .inline_card_embeds_diff_snippet_for_test(line, ctx)
+    }
+
+    /// The 1-based line the editor's primary cursor is on for `path`.
+    pub fn cursor_line_for_test(&self, path: &str, ctx: &AppContext) -> Option<usize> {
+        Some(
+            self.code_editor_for_test(path, ctx)?
+                .as_ref(ctx)
+                .cursor_line_for_test(ctx),
+        )
+    }
+
+    /// Move the editor's primary cursor to the start of the 1-based `line` of `path` (mirrors
+    /// clicking that code line). Returns `false` if the editor isn't available.
+    pub fn set_cursor_to_line_for_test(
+        &mut self,
+        path: &str,
+        line: usize,
+        ctx: &mut ViewContext<Self>,
+    ) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.set_cursor_to_line_for_test(line, ctx);
+        });
+        true
+    }
+
+    /// Override the soft-wrap width of the saved inline card anchored at the 1-based `line` of
+    /// `path`, forcing its body to re-wrap. Returns `false` if no saved card is anchored there.
+    pub fn set_inline_card_wrap_width_for_test(
+        &mut self,
+        path: &str,
+        line: usize,
+        width: f32,
+        ctx: &mut ViewContext<Self>,
+    ) -> bool {
+        let Some(editor) = self.code_editor_for_test(path, ctx) else {
+            return false;
+        };
+        editor.update(ctx, |editor, ctx| {
+            editor.set_inline_card_wrap_width_for_test(line, width, ctx)
+        })
+    }
+
+    /// Switch the diff mode to a different one (mirrors the user picking another base in the diff
+    /// selector), driving a real diff recompute + comment reposition. Returns the mode switched to.
+    pub fn switch_diff_mode_for_test(&mut self, ctx: &mut ViewContext<Self>) -> DiffMode {
+        let current = self
+            .diff_state_model
+            .read(ctx, |model, ctx| model.diff_mode(ctx));
+        let target = match current {
+            DiffMode::Head => DiffMode::MainBranch,
+            _ => DiffMode::Head,
+        };
+        self.apply_diff_mode(target.clone(), ctx);
+        target
     }
 }

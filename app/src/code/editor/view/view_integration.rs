@@ -3,8 +3,11 @@
 //! code-review integration tests via [`crate::code_review::CodeReviewView`] and by F4/F5
 //! saved-comment coverage.
 
+use warp_editor::content::buffer::ToBufferPoint;
 use warp_editor::model::CoreEditorModel;
 use warp_editor::render::model::{LineCount, RenderLineLocation};
+use warpui::text::point::Point;
+use warpui::units::Pixels;
 use warpui::{AppContext, TypedActionView, ViewContext};
 
 use super::{CodeEditorView, CodeEditorViewAction};
@@ -14,6 +17,7 @@ use crate::code::editor::embedded_comment::{
     LaidOutEmbeddedCommentSpace, LaidOutInlineSavedComment,
 };
 use crate::code::editor::line::EditorLineLocation;
+use crate::features::FeatureFlag;
 
 fn current_line_location(line_number: usize) -> EditorLineLocation {
     let line_number = LineCount::from(line_number);
@@ -82,6 +86,16 @@ impl CodeEditorView {
     /// rendered inline). Used to assert parity with the bottom panel's line-targeted comments.
     pub fn inline_comment_ids_for_test(&self) -> Vec<crate::code_review::comments::CommentId> {
         self.inline_comments.keys().copied().collect()
+    }
+
+    /// The rendered body text of every inline saved card, resolved through each hosted child view.
+    /// Independent of the cards' resolved render lines, so tests can assert which comment bodies are
+    /// present inline after a relocation (e.g. a diff-mode switch) without coupling to line numbers.
+    pub fn inline_card_bodies_for_test(&self, app: &AppContext) -> Vec<String> {
+        self.inline_comments
+            .values()
+            .map(|view| view.as_ref(app).rendered_body(app))
+            .collect()
     }
 
     /// Whether the active composer is editing a comment imported from GitHub (shows the indicator).
@@ -285,5 +299,68 @@ impl CodeEditorView {
             .vertical_offset_at_render_location(line.into_render_line_location())?
             + render_state.styles().base_line_height();
         Some(offset.as_f32())
+    }
+
+    /// Whether the gutter add-comment affordance is reachable on changed lines: the comment-button
+    /// display option is enabled and the inline-review feature flag is on (the two conditions the
+    /// element checks before rendering the clickable button on a hovered diff line).
+    pub fn comment_button_available_for_test(&self) -> bool {
+        FeatureFlag::InlineCodeReview.is_enabled() && self.display_options.comment_button.is_some()
+    }
+
+    /// Whether the saved inline card anchored at the given 1-based current line embeds a diff
+    /// snippet, resolved through the block's hosted child. `Some(false)` proves the card renders
+    /// only its body (no embedded diff snippet); `None` if no saved card is anchored there.
+    pub fn inline_card_embeds_diff_snippet_for_test(
+        &self,
+        line: usize,
+        app: &AppContext,
+    ) -> Option<bool> {
+        self.model
+            .as_ref(app)
+            .render_state()
+            .as_ref(app)
+            .comment_block_item(RenderLineLocation::Current(LineCount::from(line)))?
+            .as_any()
+            .downcast_ref::<LaidOutInlineSavedComment>()?
+            .embeds_diff_snippet_for_test(app)
+    }
+
+    /// The 1-based line the editor's primary cursor head is on.
+    pub fn cursor_line_for_test(&self, app: &AppContext) -> usize {
+        let model = self.model.as_ref(app);
+        let selection = *model.selections(app).first();
+        let buffer = model.content().as_ref(app);
+        // Buffer points report rows using the editor's one-based convention.
+        selection.head.to_buffer_point(buffer).row as usize
+    }
+
+    /// Move the editor's primary cursor to the start of the given 1-based line (mirrors clicking
+    /// that code line).
+    pub fn set_cursor_to_line_for_test(&mut self, line: usize, ctx: &mut ViewContext<Self>) {
+        self.cursor_at(Point::new(line as u32, 0), ctx);
+    }
+
+    /// Override the soft-wrap width of the saved inline card anchored at the given 1-based current
+    /// line, forcing its body to re-wrap. Returns `false` if no saved card is anchored there.
+    pub fn set_inline_card_wrap_width_for_test(
+        &mut self,
+        line: usize,
+        width: f32,
+        ctx: &mut ViewContext<Self>,
+    ) -> bool {
+        let target = LineCount::from(line);
+        let Some(handle) = self
+            .inline_comments
+            .values()
+            .find(|view| view.as_ref(ctx).line().line_number() == Some(target))
+            .cloned()
+        else {
+            return false;
+        };
+        handle.update(ctx, |view, ctx| {
+            view.set_body_wrap_width_for_test(Pixels::new(width), ctx);
+        });
+        true
     }
 }

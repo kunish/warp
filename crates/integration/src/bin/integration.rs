@@ -319,6 +319,13 @@ fn register_tests() -> HashMap<&'static str, BoxedBuilderFn> {
     register_test!(test_code_review_current_to_outdated_removes_inline_block);
     register_test!(test_code_review_very_tall_comment_is_scrollable);
     register_test!(test_code_review_saved_comment_jump_scrolls_card_into_view);
+    register_test!(test_code_review_saved_comment_survives_diff_recompute);
+    register_test!(test_code_review_saved_comment_flag_off_no_inline_block);
+    register_test!(test_code_review_saved_comment_reflows_on_width_change);
+    register_test!(test_code_review_saved_comment_survives_diff_mode_switch);
+    register_test!(test_code_review_saved_comment_has_no_embedded_diff_snippet);
+    register_test!(test_code_review_gutter_add_comment_opens_composer);
+    register_test!(test_code_review_inline_card_event_routing_and_cursor_isolation);
     register_test!(test_alt_screen_context_menu_with_sgr_with_mouse_reporting);
     register_test!(test_alt_screen_context_menu_with_sgr_without_mouse_reporting);
     register_test!(test_alt_screen_context_menu_without_sgr_with_mouse_reporting);
