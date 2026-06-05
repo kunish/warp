@@ -4816,6 +4816,21 @@ impl SettingsWidget for ShowVerticalTabsSearchBarWidget {
     ) -> Box<dyn Element> {
         let tab_settings = TabSettings::as_ref(app);
 
+        // Embed the current Command Palette shortcut so users know how to reach
+        // search when the bar is hidden. Falls back to no shortcut if unbound.
+        let description = match bindings::keybinding_name_to_display_string(
+            crate::workspace::view::TOGGLE_COMMAND_PALETTE_KEYBINDING_NAME,
+            app,
+        ) {
+            Some(shortcut) => format!(
+                "Show the search bar in the vertical tabs header. Search remains available through the Command Palette ({shortcut})."
+            ),
+            None => {
+                "Show the search bar in the vertical tabs header. Search remains available through the Command Palette."
+                    .to_string()
+            }
+        };
+
         render_body_item::<AppearancePageAction>(
             "Show search bar in vertical tabs".into(),
             None,
@@ -4833,13 +4848,12 @@ impl SettingsWidget for ShowVerticalTabsSearchBarWidget {
                 .check(*tab_settings.show_vertical_tabs_search_bar)
                 .build()
                 .on_click(move |ctx, _, _| {
-                    ctx.dispatch_typed_action(AppearancePageAction::ToggleShowVerticalTabsSearchBar);
+                    ctx.dispatch_typed_action(
+                        AppearancePageAction::ToggleShowVerticalTabsSearchBar,
+                    );
                 })
                 .finish(),
-            Some(
-                "Show the search bar in the vertical tabs header. Search stays available through the Command Palette and its keyboard shortcut."
-                    .to_string(),
-            ),
+            Some(description),
         )
     }
 }
