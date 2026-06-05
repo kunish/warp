@@ -90,8 +90,6 @@ mod actions;
 pub(super) use actions::CodeEditorViewAction;
 pub use actions::init;
 
-#[cfg(feature = "integration_tests")]
-mod view_integration;
 
 mod vim_handler;
 
