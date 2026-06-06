@@ -291,8 +291,7 @@ impl Wsh {
         let mut rows = self.miniterm.take_scrolled_out();
         rows.extend(self.miniterm.grid().iter().cloned());
         self.blocks.add_block(rows);
-        let usable = self.rows.saturating_sub(1);
-        self.miniterm.resize(self.cols, usable);
+        self.miniterm.reset();
     }
 
     fn drain_pty(&mut self, buf: &mut [u8]) {

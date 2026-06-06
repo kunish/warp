@@ -89,6 +89,17 @@ impl MiniTerm {
         self.cols
     }
 
+    pub fn reset(&mut self) {
+        self.grid = blank_grid(self.cols, self.rows);
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        self.current_attr = CellAttr::default();
+        self.saved_cursor = None;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows;
+        self.scrolled_out.clear();
+    }
+
     // -- scroll helpers --
 
     fn scroll_up(&mut self, n: usize) {

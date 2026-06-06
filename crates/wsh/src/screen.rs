@@ -134,10 +134,7 @@ pub fn render(frame: &Frame) -> anyhow::Result<()> {
 
     // --- Active block region ---
     let active_start_row = layout.scrollback_height as u16;
-    let grid_offset = frame
-        .active_grid
-        .len()
-        .saturating_sub(layout.active_height);
+    let grid_offset = (frame.active_cursor.0 + 1).saturating_sub(layout.active_height);
     for i in 0..layout.active_height {
         let screen_row = active_start_row + i as u16;
         queue!(stdout, cursor::MoveTo(0, screen_row))?;
