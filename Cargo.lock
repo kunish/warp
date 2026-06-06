@@ -16737,11 +16737,13 @@ name = "wsh"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bitflags 2.9.4",
  "crossterm",
  "env_logger",
  "libc",
  "log",
  "nix 0.26.4",
+ "vte",
 ]
 
 [[package]]
