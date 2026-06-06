@@ -68,7 +68,10 @@ fn compute_layout(frame: &Frame) -> Layout {
         + if has_status { 1 } else { 0 };
     let usable = total.saturating_sub(reserved);
 
-    let active_height = frame.active_grid.len().min(usable);
+    // Dynamic active block height: show rows up to cursor + 1 (minimum 1 row for
+    // the prompt), not the full grid. This leaves room for scrollback.
+    let content_height = (frame.active_cursor.0 + 1).max(1);
+    let active_height = content_height.min(usable);
     let scrollback_height = usable.saturating_sub(active_height);
 
     // Layout from bottom: status_bar, then agent_input, then agent_status,
@@ -419,9 +422,9 @@ mod tests {
             show_cursor: true,
         };
         let layout = compute_layout(&frame);
-        // usable = 24 - 1 = 23, active = min(5, 23) = 5, scrollback = 18
-        assert_eq!(layout.active_height, 5);
-        assert_eq!(layout.scrollback_height, 18);
+        // cursor at (0,0) → content_height = 1, usable = 23
+        assert_eq!(layout.active_height, 1);
+        assert_eq!(layout.scrollback_height, 22);
         assert_eq!(layout.status_bar_row, 23);
         assert!(layout.agent_input_row.is_none());
     }
@@ -445,9 +448,9 @@ mod tests {
             show_cursor: true,
         };
         let layout = compute_layout(&frame);
-        // usable = 24 - 1 - 1 = 22, active = min(3, 22) = 3, scrollback = 19
-        assert_eq!(layout.active_height, 3);
-        assert_eq!(layout.scrollback_height, 19);
+        // cursor at (0,0) → content_height = 1, usable = 22
+        assert_eq!(layout.active_height, 1);
+        assert_eq!(layout.scrollback_height, 21);
         assert_eq!(layout.agent_input_row, Some(22));
         assert_eq!(layout.status_bar_row, 23);
     }
@@ -471,9 +474,9 @@ mod tests {
             show_cursor: true,
         };
         let layout = compute_layout(&frame);
-        // usable = 9, active = min(100, 9) = 9, scrollback = 0
-        assert_eq!(layout.active_height, 9);
-        assert_eq!(layout.scrollback_height, 0);
+        // cursor at (0,0) → content_height = 1, usable = 9
+        assert_eq!(layout.active_height, 1);
+        assert_eq!(layout.scrollback_height, 8);
     }
 
     #[test]
@@ -494,8 +497,9 @@ mod tests {
             show_cursor: false,
         };
         let layout = compute_layout(&frame);
-        assert_eq!(layout.active_height, 0);
-        assert_eq!(layout.scrollback_height, 23);
+        // cursor at (0,0) → content_height = 1, usable = 23
+        assert_eq!(layout.active_height, 1);
+        assert_eq!(layout.scrollback_height, 22);
     }
 
     #[test]
