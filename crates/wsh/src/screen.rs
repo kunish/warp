@@ -18,6 +18,7 @@ pub struct StatusBar<'a> {
 
 pub struct Frame<'a> {
     pub completed_rows: &'a [Vec<Cell>],
+    pub streaming_rows: &'a [Vec<Cell>],
     pub active_grid: &'a [Vec<Cell>],
     pub active_cursor: (usize, usize),
     pub status_bar: StatusBar<'a>,
@@ -105,7 +106,17 @@ pub fn render(frame: &Frame) -> anyhow::Result<()> {
         }
     }
 
-    // --- Active block region (immediately after scrollback) ---
+    // --- Streaming rows (ephemeral agent text, after scrollback) ---
+    for streaming_row in frame.streaming_rows {
+        if next_row >= layout.status_bar_row {
+            break;
+        }
+        queue!(stdout, cursor::MoveTo(0, next_row))?;
+        render_cell_row(&mut stdout, streaming_row, cols)?;
+        next_row += 1;
+    }
+
+    // --- Active block region (immediately after streaming) ---
     let active_start_row = next_row;
     let grid_offset = (frame.active_cursor.0 + 1).saturating_sub(layout.active_height);
     for i in 0..layout.active_height {
@@ -384,6 +395,7 @@ mod tests {
         let completed: Vec<Vec<Cell>> = vec![make_row("done"); 10];
         let frame = Frame {
             completed_rows: &completed,
+            streaming_rows: &[],
             active_grid: &active_grid,
             active_cursor: (0, 0),
             status_bar: StatusBar {
@@ -409,6 +421,7 @@ mod tests {
         let active_grid: Vec<Vec<Cell>> = vec![make_row("x"); 3];
         let frame = Frame {
             completed_rows: &[],
+            streaming_rows: &[],
             active_grid: &active_grid,
             active_cursor: (0, 0),
             status_bar: StatusBar {
@@ -434,6 +447,7 @@ mod tests {
         let active_grid: Vec<Vec<Cell>> = vec![make_row("y"); 100];
         let frame = Frame {
             completed_rows: &[],
+            streaming_rows: &[],
             active_grid: &active_grid,
             active_cursor: (0, 0),
             status_bar: StatusBar {
@@ -457,6 +471,7 @@ mod tests {
     fn layout_empty_everything() {
         let frame = Frame {
             completed_rows: &[],
+            streaming_rows: &[],
             active_grid: &[],
             active_cursor: (0, 0),
             status_bar: StatusBar {
@@ -481,6 +496,7 @@ mod tests {
         let active_grid: Vec<Vec<Cell>> = vec![make_row("a"); 2];
         let frame = Frame {
             completed_rows: &[],
+            streaming_rows: &[],
             active_grid: &active_grid,
             active_cursor: (0, 0),
             status_bar: StatusBar {
@@ -504,6 +520,7 @@ mod tests {
     fn layout_with_agent_status() {
         let frame = Frame {
             completed_rows: &[],
+            streaming_rows: &[],
             active_grid: &[],
             active_cursor: (0, 0),
             status_bar: StatusBar {

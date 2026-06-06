@@ -9,7 +9,7 @@ use crossterm::terminal;
 use nix::unistd::{close, pipe, read, write as nix_write};
 
 use crate::block::BlockManager;
-use crate::cell::{CellFlags, Color};
+use crate::cell::{Cell, CellAttr, CellFlags, Color};
 use crate::miniterm::MiniTerm;
 use crate::pty::resize_pty;
 use crate::screen::{self, Frame, StatusBar};
@@ -314,6 +314,8 @@ pub fn run(master_fd: RawFd) -> Result<()> {
         rows,
         should_exit: false,
         spinner_tick: 0,
+        streaming_lines: Vec::new(),
+        streaming_col: 0,
     };
     state.render_frame();
 
@@ -362,6 +364,8 @@ struct Wsh {
     rows: u16,
     should_exit: bool,
     spinner_tick: usize,
+    streaming_lines: Vec<Vec<Cell>>,
+    streaming_col: usize,
 }
 
 impl Wsh {
@@ -457,6 +461,7 @@ impl Wsh {
         let completed = self.blocks.collected_rows();
         let frame = Frame {
             completed_rows: &completed,
+            streaming_rows: &self.streaming_lines,
             active_grid: self.miniterm.grid(),
             active_cursor: self.miniterm.cursor_pos(),
             status_bar: StatusBar {
@@ -562,11 +567,7 @@ impl Wsh {
 
         for line in &lines {
             self.maybe_extract_conversation_id(line);
-            if let Some((text, color, flags)) = parse_agent_event(line, cols) {
-                for text_line in text.lines() {
-                    self.blocks.add_styled_line(text_line, color, flags, cols);
-                }
-            }
+            self.process_agent_line(line, cols);
         }
 
         // Check if the agent process has finished.
@@ -575,12 +576,9 @@ impl Wsh {
                 let final_lines = agent.read_lines();
                 for line in &final_lines {
                     self.maybe_extract_conversation_id(line);
-                    if let Some((text, color, flags)) = parse_agent_event(line, cols) {
-                        for text_line in text.lines() {
-                            self.blocks.add_styled_line(text_line, color, flags, cols);
-                        }
-                    }
+                    self.process_agent_line(line, cols);
                 }
+                self.flush_streaming_lines();
                 self.agent = None;
                 self.blocks.add_styled_line(
                     "✓ agent finished",
@@ -589,6 +587,43 @@ impl Wsh {
                     cols,
                 );
                 self.mode = Mode::Shell;
+            }
+        }
+    }
+
+    fn process_agent_line(&mut self, line: &str, cols: usize) {
+        let json: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let event_type = match json.get("type").and_then(|t| t.as_str()) {
+            Some(t) => t,
+            None => return,
+        };
+
+        match event_type {
+            "agent" | "agent_reasoning" => {
+                let text = match json.get("text").and_then(|t| t.as_str()) {
+                    Some(t) if !t.trim().is_empty() => t,
+                    _ => return,
+                };
+                let color = if event_type == "agent_reasoning" {
+                    Color::Indexed(8)
+                } else {
+                    Color::Default
+                };
+                let flags = CellFlags::empty();
+                self.append_streaming_text(text, color, flags);
+            }
+            "system" => {}
+            _ => {
+                // Non-text events: flush streaming text first, then add as permanent scrollback.
+                self.flush_streaming_lines();
+                if let Some((text, color, flags)) = parse_agent_event(line, cols) {
+                    for text_line in text.lines() {
+                        self.blocks.add_styled_line(text_line, color, flags, cols);
+                    }
+                }
             }
         }
     }
@@ -654,6 +689,7 @@ impl Wsh {
         if let Some(mut agent) = self.agent.take() {
             agent.kill();
         }
+        self.flush_streaming_lines();
         self.mode = Mode::Shell;
         self.blocks.add_styled_line(
             "✗ agent canceled",
@@ -661,6 +697,37 @@ impl Wsh {
             CellFlags::DIM,
             self.cols as usize,
         );
+    }
+
+    fn append_streaming_text(&mut self, text: &str, color: Color, flags: CellFlags) {
+        let cols = self.cols as usize;
+        let attr = CellAttr { fg: color, bg: Color::Default, flags };
+        for ch in text.chars() {
+            if ch == '\n' || self.streaming_col >= cols {
+                self.streaming_lines.push(vec![Cell::default(); cols]);
+                self.streaming_col = 0;
+                if ch == '\n' {
+                    continue;
+                }
+            }
+            if self.streaming_lines.is_empty() {
+                self.streaming_lines.push(vec![Cell::default(); cols]);
+            }
+            let last = self.streaming_lines.last_mut().unwrap();
+            if self.streaming_col < cols {
+                last[self.streaming_col] = Cell::with_char(ch, attr);
+                self.streaming_col += 1;
+            }
+        }
+    }
+
+    fn flush_streaming_lines(&mut self) {
+        if self.streaming_lines.is_empty() {
+            return;
+        }
+        let rows = std::mem::take(&mut self.streaming_lines);
+        self.streaming_col = 0;
+        self.blocks.add_block(rows);
     }
 
     fn handle_agent_input_bytes(&mut self, bytes: &[u8]) -> Result<()> {
