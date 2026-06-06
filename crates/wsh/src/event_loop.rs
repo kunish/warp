@@ -78,6 +78,37 @@ impl Mode {
 
 // ── Agent subprocess ─────────────────────────────────────────────────
 
+fn resolve_agent_binary() -> String {
+    if let Ok(bin) = env::var("WSH_AGENT_BINARY") {
+        return bin;
+    }
+
+    // Try well-known CLI names on PATH.
+    for name in ["warp", "oz"] {
+        if std::process::Command::new(name)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
+            return name.to_string();
+        }
+    }
+
+    // Fall back to macOS app bundle binaries.
+    for path in [
+        "/Applications/WarpDev.app/Contents/MacOS/dev",
+        "/Applications/Warp.app/Contents/MacOS/stable",
+    ] {
+        if std::path::Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+
+    "warp".to_string()
+}
+
 struct AgentProcess {
     child: Child,
     stdout_fd: RawFd,
@@ -87,11 +118,11 @@ struct AgentProcess {
 impl AgentProcess {
     #[allow(clippy::disallowed_types)] // wsh is Unix-only; no Windows terminal flash concern.
     fn spawn(prompt: &str) -> Result<Self> {
-        let binary = env::var("WSH_AGENT_BINARY").unwrap_or_else(|_| "warp".into());
+        let binary = resolve_agent_binary();
         let child = std::process::Command::new(&binary)
             .args(["agent", "run", "--prompt", prompt, "--output-format", "ndjson"])
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::null())
             .spawn()
             .with_context(|| format!("failed to spawn `{binary} agent run`"))?;
 
@@ -153,6 +184,24 @@ fn parse_agent_event(line: &str, cols: usize) -> Option<(String, Color, CellFlag
     let event_type = json.get("type")?.as_str()?;
 
     match event_type {
+        "system" => {
+            let sub = json.get("event_type").and_then(|e| e.as_str());
+            match sub {
+                Some("run_started") => {
+                    let url = json.get("run_url").and_then(|u| u.as_str()).unwrap_or("");
+                    if !url.is_empty() {
+                        let display = if url.len() > cols {
+                            format!("{}…", &url[..cols.saturating_sub(1)])
+                        } else {
+                            url.to_string()
+                        };
+                        return Some((display, Color::Indexed(8), CellFlags::DIM));
+                    }
+                    None
+                }
+                _ => None,
+            }
+        }
         "agent" | "agent_reasoning" => {
             let text = json.get("text")?.as_str()?;
             if text.trim().is_empty() {
