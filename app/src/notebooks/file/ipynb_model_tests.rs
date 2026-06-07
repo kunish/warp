@@ -121,9 +121,7 @@ fn rejects_non_v4_notebook() {
     let err = NotebookDoc::parse(json).unwrap_err();
     assert!(matches!(
         err,
-        IpynbError::UnsupportedFormat {
-            nbformat: Some(3)
-        }
+        IpynbError::UnsupportedFormat { nbformat: Some(3) }
     ));
 }
 
@@ -176,7 +174,10 @@ fn editing_code_source_leaves_outputs_untouched() {
 
     doc.cells[1].set_source("print('changed')\nprint('again')");
 
-    assert_eq!(doc.cells[1].source_text(), "print('changed')\nprint('again')");
+    assert_eq!(
+        doc.cells[1].source_text(),
+        "print('changed')\nprint('again')"
+    );
     // Outputs are not recomputed or otherwise altered by a source edit.
     assert_eq!(doc.cells[1].outputs, original_outputs);
     // The markdown cell is unchanged.
@@ -289,6 +290,8 @@ fn edited_then_serialized_notebook_reparses() {
     // The untouched code cell's outputs survived the edit + round trip.
     assert_eq!(
         reparsed.cells[2].outputs,
-        Some(vec![json!({"name": "stdout", "output_type": "stream", "text": ["hello\n"]})])
+        Some(vec![
+            json!({"name": "stdout", "output_type": "stream", "text": ["hello\n"]})
+        ])
     );
 }
