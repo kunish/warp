@@ -80,7 +80,7 @@ fn scoped_credential_rejects_expired_grant() {
 }
 
 #[test]
-fn scoped_credential_allows_confirmation_required_action_scope() {
+fn scoped_credential_allows_close_action_scope() {
     let grant = CredentialGrant::new(
         InstanceId("inst_test".to_owned()),
         ActionKind::WindowClose,
@@ -88,7 +88,7 @@ fn scoped_credential_allows_confirmation_required_action_scope() {
     );
     grant
         .verify_for_action(&grant.instance_id, ActionKind::WindowClose)
-        .expect("exact-action credential is separate from one-shot confirmation");
+        .expect("exact-action credential for close actions is accepted");
 }
 
 #[test]
