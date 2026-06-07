@@ -672,6 +672,7 @@ impl LocalControlBridge {
             ActionKind::CapabilityInspect => metadata::capability_inspect(&request.action),
             ActionKind::ActionList => Ok(metadata::action_list()),
             ActionKind::ActionInspect => metadata::action_inspect(&request.action),
+            ActionKind::SurfaceList => metadata::surface_list(ctx),
             ActionKind::WindowList => metadata::window_list(&request.target, ctx),
             ActionKind::WindowInspect => metadata::window_inspect(&request.target, ctx),
             ActionKind::TabList => metadata::tab_list(&request.target, ctx),
@@ -697,14 +698,22 @@ impl LocalControlBridge {
             | ActionKind::SurfaceSettingsOpen
             | ActionKind::SurfaceCommandPaletteOpen
             | ActionKind::SurfaceCommandSearchOpen
+            | ActionKind::SurfaceThemePickerOpen
+            | ActionKind::SurfaceKeybindingsOpen
             | ActionKind::SurfaceWarpDriveOpen
             | ActionKind::SurfaceWarpDriveToggle
             | ActionKind::SurfaceResourceCenterToggle
             | ActionKind::SurfaceAiAssistantToggle
+            | ActionKind::SurfaceCodeReviewOpen
             | ActionKind::SurfaceCodeReviewToggle
+            | ActionKind::SurfaceProjectExplorerOpen
+            | ActionKind::SurfaceGlobalSearchOpen
+            | ActionKind::SurfaceConversationListOpen
             | ActionKind::SurfaceLeftPanelToggle
             | ActionKind::SurfaceRightPanelToggle
+            | ActionKind::SurfaceVerticalTabsOpen
             | ActionKind::SurfaceVerticalTabsToggle
+            | ActionKind::SurfaceAgentManagementOpen
             | ActionKind::FileOpen => app_state::handle(
                 &self.instance_id,
                 request.action.kind,

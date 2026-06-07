@@ -654,7 +654,9 @@ fn activation_for_bundled_skill(skill_id: &str, resources_dir: &Path) -> Bundled
         "modify-settings" => {
             BundledSkillActivation::RequiresFile(resources_dir.join("settings_schema.json"))
         }
-        "warpctrl" => BundledSkillActivation::RequiresFeature(FeatureFlag::WarpControlCli),
+        "warpctrl" | "warp-tour" => {
+            BundledSkillActivation::RequiresFeature(FeatureFlag::WarpControlCli)
+        }
         _ => BundledSkillActivation::Always,
     }
 }

@@ -1,6 +1,6 @@
 # Summary
 Warp ships a local control CLI, provisionally named `warpctrl`, that lets agents, developers, and scripts operate running Warp app processes through a typed, allowlisted command surface. `warpctrl` is an Oz-style wrapper script that invokes the existing channel-specific Warp binary in control mode rather than a separate standalone binary.
-The public catalog contains exactly **75 actions** organized around stable user-facing nouns. **72 actions** are default-authorized once the user enables Scripting. **3 destructive close actions** (`window.close`, `tab.close`, `pane.close`) require one-shot in-app confirmation before executing. `block.list` is intentionally absent from the catalog. Input-staging commands place text in the input buffer but never submit it.
+The public catalog contains exactly **84 actions** organized around stable user-facing nouns. **81 actions** are default-authorized once the user enables Scripting. **3 destructive close actions** (`window.close`, `tab.close`, `pane.close`) require one-shot in-app confirmation before executing. `block.list` is intentionally absent from the catalog. Input-staging commands place text in the input buffer but never submit it.
 All callers are external same-user processes. There is no inside-Warp/outside-Warp distinction, no verified-terminal invocation context, and no authenticated-user identity layer. Security relies on owner-only filesystem discovery, same-user Unix credential broker with kernel peer credentials, short-lived instance-bound exact-action credentials, loopback HTTP transport, and app-side enforcement.
 ## Problem
 Warp has rich interactive actions reachable through UI, keybindings, menus, and deeplinks. Agents can use native tools for files, code, shell commands, and MCP calls, but they cannot reliably operate Warp's own product surfaces: arranging workspaces, focusing panes, opening Warp Drive views, presenting settings, or recovering from ambiguous UI state. Developers cannot compose those actions into shell scripts, demos, or automation workflows, and there is no general local protocol for addressing a specific running Warp instance, window, tab, pane, or session.
@@ -8,7 +8,7 @@ Warp has rich interactive actions reachable through UI, keybindings, menus, and 
 - Provide a first-class, scriptable `warpctrl` command for controlling running Warp app processes.
 - Make Warp's UI and app state available to agents through a typed, permissioned control plane instead of brittle screen automation.
 - Keep CLI startup lightweight by avoiding GUI-app startup for routine control commands.
-- Keep the surface allowlisted and finite: exactly 75 named actions, no arbitrary internal dispatch.
+- Keep the surface allowlisted and finite: exactly 84 named actions, no arbitrary internal dispatch.
 - Make targeting explicit and deterministic across multiple Warp processes, windows, tabs, panes, and sessions.
 - Use a simple enabled/disabled Scripting setting rather than multi-mode invocation-context policies.
 ## Non-goals
@@ -27,7 +27,7 @@ Warp has rich interactive actions reachable through UI, keybindings, menus, and 
 4. **Personalization and preference migration.** An agent inspects settings, proposes Warp equivalents from other tools, applies allowlisted changes, and reports unsupported mappings explicitly.
 ## Behavior
 1. The CLI operates only on running local Warp app processes. If no compatible process is available, it exits non-zero with a structured error.
-2. The CLI exposes only the 75 explicitly allowlisted actions. Unknown, unsupported, or non-allowlisted requests fail with structured errors and are never forwarded to arbitrary internal dispatch.
+2. The CLI exposes only the 84 explicitly allowlisted actions. Unknown, unsupported, or non-allowlisted requests fail with structured errors and are never forwarded to arbitrary internal dispatch.
 3. Every successful mutating request identifies the Warp process instance, resolved target, and a success payload suitable for JSON output.
 4. Every failure identifies a stable machine-readable error code, a human-readable explanation, and any selector that was ambiguous, missing, stale, or invalid.
 5. The CLI supports human-readable output by default and JSON output for scripts with stable field names.
@@ -48,6 +48,7 @@ Warp has rich interactive actions reachable through UI, keybindings, menus, and 
 ## Bundled agent skill
 When Warp Control and bundled skills are enabled, Warp exposes a built-in `warpctrl` skill to the Warp agent. The skill tells the agent when to use Warp Control for actions that affect Warp itself, teaches a discovery-first targeting workflow, and documents the same manual commands available to users.
 The skill is unavailable when the `WarpControlCli` feature flag is disabled. Disabled skills are omitted from agent skill discovery and cannot be read through a stale direct skill reference.
+Warp also exposes a built-in `warp-tour` skill under the same feature gate. It uses Ask User Question to drive an interactive product tour, queries `surface.list` to hide unavailable destinations, prefers a reusable split pane so the main agent conversation remains visible, restores temporary theme state, and cleans up only targets it created.
 ## Scripting setting
 Warp adds a new top-level Settings pane page named **Scripting**. The page contains a single toggle for local control:
 - **Enabled** (default): same-user processes may request exact-action credentials from the broker and send control requests to the loopback listener.
@@ -59,11 +60,11 @@ Three destructive actions require one-shot in-app confirmation before executing:
 - `tab.close`
 - `pane.close`
 When the app bridge receives one of these actions, it presents a brief in-app confirmation to the user. The user must approve the close before it executes. If the user dismisses the confirmation, the action fails with `user_confirmation_denied`. If the confirmation times out without a response, the action fails with `user_confirmation_expired`. The confirmation is per-invocation; there is no persistent "always allow" option for close actions.
-All other 72 actions execute immediately once the credential is validated.
+All other 81 actions execute immediately once the credential is validated.
 ## Input staging
 The two input commands (`input.insert`, `input.replace`) only stage or edit text in the terminal input buffer. They never submit the buffer, press Enter, or execute a command. There is no `input.run`, `input.get`, `input.clear`, or `input.mode.set` action in the catalog. Terminal command execution is not part of this product surface.
 ## Action catalog
-The public catalog contains exactly 75 actions. The Block, Auth, Drive, and History families are entirely absent. Input is limited to `input.insert` and `input.replace`. Actions are organized by noun and use the exact dotted names from the authoritative `ActionKind` catalog.
+The public catalog contains exactly 84 actions. The Block, Auth, Drive, and History families are entirely absent. Input is limited to `input.insert` and `input.replace`. Actions are organized by noun and use the exact dotted names from the authoritative `ActionKind` catalog.
 ### Instance (2 actions)
 All default-authorized.
 - `instance.list` — list reachable Warp app processes.
@@ -152,21 +153,30 @@ All default-authorized.
 - `keybinding.get` — get a specific keybinding.
 ### Action (2 actions)
 All default-authorized.
-- `action.list` — list all 75 catalog actions with implementation status.
+- `action.list` — list all 84 catalog actions with implementation status.
 - `action.inspect` — metadata for one action.
-### Surface (11 actions)
+### Surface (20 actions)
 All default-authorized.
+- `surface.list` — list available and unavailable tour destinations with stable names and reasons.
 - `surface.settings.open` — open the settings surface, optionally to a specific page or search query.
 - `surface.command_palette.open` — open or toggle the command palette with an optional initial query.
 - `surface.command_search.open` — open or toggle command search.
+- `surface.theme_picker.open` — idempotently open the theme picker.
+- `surface.keybindings.open` — idempotently open keybinding settings.
 - `surface.warp_drive.open` — open the Warp Drive panel.
 - `surface.warp_drive.toggle` — toggle the Warp Drive panel.
 - `surface.resource_center.toggle` — toggle the resource center.
 - `surface.ai_assistant.toggle` — toggle the AI assistant panel.
+- `surface.code_review.open` — idempotently open code review when the target terminal has an active repository.
 - `surface.code_review.toggle` — toggle the code review panel.
+- `surface.project_explorer.open` — idempotently open the project explorer.
+- `surface.global_search.open` — idempotently open global file search.
+- `surface.conversation_list.open` — idempotently open the conversation list.
 - `surface.left_panel.toggle` — toggle the left panel.
 - `surface.right_panel.toggle` — toggle the right panel.
+- `surface.vertical_tabs.open` — idempotently open vertical tabs.
 - `surface.vertical_tabs.toggle` — toggle vertical tabs.
+- `surface.agent_management.open` — idempotently open agent management.
 ### File (1 action)
 Default-authorized.
 - `file.open` — open a file path in a Warp editor tab, optionally at a specific line and column. This is an app-state intent, not a filesystem-content operation.

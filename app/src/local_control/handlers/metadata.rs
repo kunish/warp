@@ -1,18 +1,27 @@
 //! Metadata response builders for local-control introspection actions.
+#[cfg(test)]
+#[path = "metadata_tests.rs"]
+mod tests;
 use ::local_control::protocol::{
-    ActionNameParams, PaneTarget, SessionTarget, TabTarget, TargetSelector, WindowTarget,
+    ActionNameParams, PaneTarget, SessionTarget, SurfaceListResult, SurfaceSummary, TabTarget,
+    TargetSelector, WindowTarget,
 };
 use ::local_control::{
     Action, ActionKind, ActionMetadata, ControlError, ErrorCode, InstanceId, PROTOCOL_VERSION,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
+use settings::Setting as _;
 use warp_core::channel::ChannelState;
-use warpui::{ModelContext, ViewHandle, WindowId};
+use warpui::{AppContext, ModelContext, SingletonEntity, ViewHandle, WindowId};
 
+use crate::drive::settings::WarpDriveSettings;
+use crate::features::FeatureFlag;
 use crate::local_control::resolver::require_active_window_id_for_action;
 use crate::local_control::LocalControlBridge;
 use crate::pane_group::{PaneGroup, PaneId};
+use crate::settings::{AISettings, CodeSettings};
+use crate::workspace::tab_settings::TabSettings;
 use crate::workspace::Workspace;
 
 #[derive(Serialize)]
@@ -128,6 +137,68 @@ struct SessionEntry {
     is_active: bool,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum SurfaceDestination {
+    Settings,
+    CommandPalette,
+    CommandSearch,
+    ThemePicker,
+    Keybindings,
+    WarpDrive,
+    ResourceCenter,
+    AiAssistant,
+    CodeReview,
+    ProjectExplorer,
+    GlobalSearch,
+    ConversationList,
+    LeftPanel,
+    RightPanel,
+    VerticalTabs,
+    AgentManagement,
+}
+
+impl SurfaceDestination {
+    const ALL: &[Self] = &[
+        Self::Settings,
+        Self::CommandPalette,
+        Self::CommandSearch,
+        Self::ThemePicker,
+        Self::Keybindings,
+        Self::WarpDrive,
+        Self::ResourceCenter,
+        Self::AiAssistant,
+        Self::CodeReview,
+        Self::ProjectExplorer,
+        Self::GlobalSearch,
+        Self::ConversationList,
+        Self::LeftPanel,
+        Self::RightPanel,
+        Self::VerticalTabs,
+        Self::AgentManagement,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Settings => "settings",
+            Self::CommandPalette => "command_palette",
+            Self::CommandSearch => "command_search",
+            Self::ThemePicker => "theme_picker",
+            Self::Keybindings => "keybindings",
+            Self::WarpDrive => "warp_drive",
+            Self::ResourceCenter => "resource_center",
+            Self::AiAssistant => "ai_assistant",
+            Self::CodeReview => "code_review",
+            Self::ProjectExplorer => "project_explorer",
+            Self::GlobalSearch => "global_search",
+            Self::ConversationList => "conversation_list",
+            Self::LeftPanel => "left_panel",
+            Self::RightPanel => "right_panel",
+            Self::VerticalTabs => "vertical_tabs",
+            Self::AgentManagement => "agent_management",
+        }
+    }
+}
+
 pub(crate) fn instance(
     instance_id: &Option<InstanceId>,
 ) -> Result<serde_json::Value, ControlError> {
@@ -217,6 +288,101 @@ pub(crate) fn capability_inspect(action: &Action) -> Result<serde_json::Value, C
         "action": ActionKind::CapabilityInspect.as_str(),
         "capability": metadata,
     }))
+}
+
+pub(crate) fn surface_list(
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    to_json_value(SurfaceListResult {
+        surfaces: SurfaceDestination::ALL
+            .iter()
+            .copied()
+            .map(|destination| {
+                let unavailable_reason =
+                    surface_unavailable_reason(destination, ctx).map(str::to_owned);
+                SurfaceSummary {
+                    name: destination.name().to_owned(),
+                    is_available: unavailable_reason.is_none(),
+                    unavailable_reason,
+                }
+            })
+            .collect(),
+    })
+}
+
+pub(crate) fn surface_unavailable_reason(
+    destination: SurfaceDestination,
+    ctx: &AppContext,
+) -> Option<&'static str> {
+    match destination {
+        SurfaceDestination::Settings
+        | SurfaceDestination::CommandPalette
+        | SurfaceDestination::CommandSearch
+        | SurfaceDestination::ThemePicker
+        | SurfaceDestination::Keybindings
+        | SurfaceDestination::ResourceCenter => None,
+        SurfaceDestination::WarpDrive if !WarpDriveSettings::is_warp_drive_enabled(ctx) => {
+            Some("Warp Drive is disabled")
+        }
+        SurfaceDestination::WarpDrive => None,
+        SurfaceDestination::AiAssistant if !AISettings::as_ref(ctx).is_any_ai_enabled(ctx) => {
+            Some("AI features are disabled")
+        }
+        SurfaceDestination::AiAssistant => None,
+        SurfaceDestination::CodeReview | SurfaceDestination::RightPanel
+            if !cfg!(feature = "local_fs") =>
+        {
+            Some("code review is unavailable without local filesystem support")
+        }
+        SurfaceDestination::CodeReview | SurfaceDestination::RightPanel => None,
+        SurfaceDestination::ProjectExplorer
+            if !cfg!(feature = "local_fs")
+                || !*CodeSettings::as_ref(ctx).show_project_explorer.value() =>
+        {
+            Some("project explorer is unavailable or disabled")
+        }
+        SurfaceDestination::ProjectExplorer => None,
+        SurfaceDestination::GlobalSearch
+            if !cfg!(feature = "local_fs")
+                || !FeatureFlag::GlobalSearch.is_enabled()
+                || !*CodeSettings::as_ref(ctx).show_global_search.value() =>
+        {
+            Some("global search is unavailable or disabled")
+        }
+        SurfaceDestination::GlobalSearch => None,
+        SurfaceDestination::ConversationList
+            if !FeatureFlag::AgentViewConversationListView.is_enabled()
+                || !AISettings::as_ref(ctx).is_any_ai_enabled(ctx)
+                || !*AISettings::as_ref(ctx).show_conversation_history.value() =>
+        {
+            Some("agent conversation history is unavailable or disabled")
+        }
+        SurfaceDestination::ConversationList => None,
+        SurfaceDestination::LeftPanel
+            if surface_unavailable_reason(SurfaceDestination::ProjectExplorer, ctx).is_some()
+                && surface_unavailable_reason(SurfaceDestination::GlobalSearch, ctx).is_some()
+                && surface_unavailable_reason(SurfaceDestination::ConversationList, ctx)
+                    .is_some()
+                && surface_unavailable_reason(SurfaceDestination::WarpDrive, ctx).is_some() =>
+        {
+            Some("the left panel has no available views")
+        }
+        SurfaceDestination::LeftPanel => None,
+        SurfaceDestination::VerticalTabs
+            if !FeatureFlag::VerticalTabs.is_enabled()
+                || !*TabSettings::as_ref(ctx).use_vertical_tabs.value() =>
+        {
+            Some("vertical tabs are unavailable or disabled")
+        }
+        SurfaceDestination::VerticalTabs => None,
+        SurfaceDestination::AgentManagement
+            if !FeatureFlag::AgentManagementView.is_enabled()
+                || !AISettings::as_ref(ctx).is_any_ai_enabled(ctx) =>
+        {
+            Some("agent management is unavailable or disabled")
+        }
+        SurfaceDestination::AgentManagement => None,
+    }
 }
 
 pub(crate) fn window_list(

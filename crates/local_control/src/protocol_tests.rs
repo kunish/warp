@@ -90,6 +90,41 @@ fn response_error_serializes_machine_code() {
 }
 
 #[test]
+fn surface_list_result_serializes_stable_availability_shape() {
+    let result = SurfaceListResult {
+        surfaces: vec![
+            SurfaceSummary {
+                name: "theme_picker".to_owned(),
+                is_available: true,
+                unavailable_reason: None,
+            },
+            SurfaceSummary {
+                name: "vertical_tabs".to_owned(),
+                is_available: false,
+                unavailable_reason: Some("vertical tabs are disabled".to_owned()),
+            },
+        ],
+    };
+    let value = serde_json::to_value(result).expect("surface list result serializes");
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "surfaces": [
+                {
+                    "name": "theme_picker",
+                    "is_available": true
+                },
+                {
+                    "name": "vertical_tabs",
+                    "is_available": false,
+                    "unavailable_reason": "vertical tabs are disabled"
+                }
+            ]
+        })
+    );
+}
+
+#[test]
 fn malformed_and_removed_action_names_are_not_deserialized() {
     for action in [
         "tab.create.extra",
@@ -122,8 +157,45 @@ fn malformed_and_removed_action_names_are_not_deserialized() {
 }
 
 #[test]
-fn catalog_has_exactly_75_retained_actions() {
-    assert_eq!(ActionKind::ALL.len(), 75);
+fn catalog_has_exactly_84_retained_actions() {
+    assert_eq!(ActionKind::ALL.len(), 84);
+}
+
+#[test]
+fn direct_surface_actions_have_stable_names() {
+    assert_eq!(ActionKind::SurfaceList.as_str(), "surface.list");
+    assert_eq!(
+        ActionKind::SurfaceThemePickerOpen.as_str(),
+        "surface.theme_picker.open"
+    );
+    assert_eq!(
+        ActionKind::SurfaceKeybindingsOpen.as_str(),
+        "surface.keybindings.open"
+    );
+    assert_eq!(
+        ActionKind::SurfaceCodeReviewOpen.as_str(),
+        "surface.code_review.open"
+    );
+    assert_eq!(
+        ActionKind::SurfaceProjectExplorerOpen.as_str(),
+        "surface.project_explorer.open"
+    );
+    assert_eq!(
+        ActionKind::SurfaceGlobalSearchOpen.as_str(),
+        "surface.global_search.open"
+    );
+    assert_eq!(
+        ActionKind::SurfaceConversationListOpen.as_str(),
+        "surface.conversation_list.open"
+    );
+    assert_eq!(
+        ActionKind::SurfaceVerticalTabsOpen.as_str(),
+        "surface.vertical_tabs.open"
+    );
+    assert_eq!(
+        ActionKind::SurfaceAgentManagementOpen.as_str(),
+        "surface.agent_management.open"
+    );
 }
 
 #[test]
@@ -141,7 +213,7 @@ fn catalog_has_exact_confirmation_policy() {
             ActionKind::PaneClose
         ]
     );
-    assert_eq!(ActionKind::ALL.len() - confirmed.len(), 72);
+    assert_eq!(ActionKind::ALL.len() - confirmed.len(), 81);
 }
 
 #[test]

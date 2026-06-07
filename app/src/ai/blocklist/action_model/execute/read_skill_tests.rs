@@ -162,43 +162,46 @@ fn test_read_skill_executor_reads_enabled_bundled_skill() {
 }
 
 #[test]
-fn test_read_skill_executor_rejects_feature_gated_bundled_skill_when_disabled() {
+fn test_read_skill_executor_rejects_warp_control_bundled_skills_when_disabled() {
     App::test((), |mut app| async move {
         initialize_app(&mut app);
         let _bundled_skills = FeatureFlag::BundledSkills.override_enabled(true);
         let _warp_control_cli = FeatureFlag::WarpControlCli.override_enabled(false);
         SkillManager::handle(&app).update(&mut app, |manager, _ctx| {
-            manager.add_bundled_skill_for_testing(
-                "warpctrl",
-                bundled_skill("warpctrl"),
-                BundledSkillActivation::RequiresFeature(FeatureFlag::WarpControlCli),
-            );
+            for skill_id in ["warpctrl", "warp-tour"] {
+                manager.add_bundled_skill_for_testing(
+                    skill_id,
+                    bundled_skill(skill_id),
+                    BundledSkillActivation::RequiresFeature(FeatureFlag::WarpControlCli),
+                );
+            }
         });
         let executor_handle = app.add_model(|_| ReadSkillExecutor::new());
+        for skill_id in ["warpctrl", "warp-tour"] {
+            let action = AIAgentAction {
+                id: AIAgentActionId::from(format!("test-action-id-{skill_id}")),
+                action: AIAgentActionType::ReadSkill(ReadSkillRequest {
+                    skill: SkillReference::BundledSkillId(skill_id.to_string()),
+                }),
+                task_id: TaskId::new(format!("test-task-id-{skill_id}")),
+                requires_result: false,
+            };
 
-        let action = AIAgentAction {
-            id: AIAgentActionId::from("test-action-id".to_string()),
-            action: AIAgentActionType::ReadSkill(ReadSkillRequest {
-                skill: SkillReference::BundledSkillId("warpctrl".to_string()),
-            }),
-            task_id: TaskId::new("test-task-id".to_string()),
-            requires_result: false,
-        };
+            let input = ExecuteActionInput {
+                action: &action,
+                conversation_id: AIConversationId::new(),
+            };
 
-        let input = ExecuteActionInput {
-            action: &action,
-            conversation_id: AIConversationId::new(),
-        };
-
-        executor_handle.update(&mut app, |executor, ctx| {
-            let result: AnyActionExecution = executor.execute(input, ctx).into();
-            assert!(matches!(
-                result,
-                AnyActionExecution::Sync(AIAgentActionResultType::ReadSkill(
-                    ReadSkillResult::Error(_)
-                ))
-            ));
-        });
+            executor_handle.update(&mut app, |executor, ctx| {
+                let result: AnyActionExecution = executor.execute(input, ctx).into();
+                assert!(matches!(
+                    result,
+                    AnyActionExecution::Sync(AIAgentActionResultType::ReadSkill(
+                        ReadSkillResult::Error(_)
+                    ))
+                ));
+            });
+        }
     });
 }
 #[test]

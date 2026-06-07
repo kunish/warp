@@ -1,6 +1,6 @@
 # warpctrl operator README
 `warpctrl` is the provisional CLI entrypoint for controlling an already-running local Warp app instance. It is intended for scripts, demos, agent workflows, and developer automation that need to perform allowlisted Warp UI actions through the installed channel-specific Warp binary without launching the GUI.
-The implemented command surface contains exactly 75 typed, allowlisted actions. Seventy-two actions execute after exact-action credential validation; `window.close`, `tab.close`, and `pane.close` additionally require one-shot in-app confirmation. The Block, Auth, Drive, and History families are absent, and `input.insert` plus `input.replace` stage text without submitting it.
+The implemented command surface contains exactly 84 typed, allowlisted actions. Eighty-one actions execute after exact-action credential validation; `window.close`, `tab.close`, and `pane.close` additionally require one-shot in-app confirmation. The Block, Auth, Drive, and History families are absent, and `input.insert` plus `input.replace` stage text without submitting it.
 ## Packaging model
 `warpctrl` should be packaged as an Oz-style wrapper script rather than a standalone Rust binary. The wrapper should resolve the installed channel-specific Warp executable and invoke it with the hidden `--warpctrl` control-mode flag:
 - `crates/local_control` owns discovery records, local authentication material, client transport, protocol envelopes, action names, and error types.
@@ -43,6 +43,7 @@ Use matching app and CLI bits from the same branch or release artifact so the pr
    ```bash
    warpctrl app ping
    warpctrl app version
+   warpctrl surface list
    ```
 5. If exactly one compatible instance is listed, create a new terminal tab:
    ```bash
@@ -104,6 +105,6 @@ sequenceDiagram
 - Future catalog expansion should consider per-request nonces, stricter platform secure-storage constraints, and stronger approval or policy gates.
 ## Documentation review notes
 - Treat `warpctrl` as provisional executable naming until packaging signs off on final artifact aliases.
-- Keep examples scoped to the authoritative 75-action catalog and explicitly call out the three confirmation-required close actions.
+- Keep examples scoped to the authoritative 84-action catalog and explicitly call out the three confirmation-required close actions.
 - Do not document excluded families or actions as usable just because internal app implementations exist.
 - Windows packaging may initially follow the existing helper-wrapper pattern. Update this README when that decision is final.

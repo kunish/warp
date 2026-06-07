@@ -289,6 +289,18 @@ pub struct KeybindingListResult {
 pub struct KeybindingGetResult {
     pub keybinding: KeybindingSummary,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SurfaceSummary {
+    pub name: String,
+    pub is_available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SurfaceListResult {
+    pub surfaces: Vec<SurfaceSummary>,
+}
 
 /// Typed success payloads for catalog actions that need stable structured data.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

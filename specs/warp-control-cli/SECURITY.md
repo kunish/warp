@@ -19,12 +19,12 @@ Exact-action credentials are safety and intent mechanisms. They let a script or 
 - Authorize every action by its exact typed identity in the app bridge.
 - Require one-shot in-app confirmation for the 3 destructive close actions (`window.close`, `tab.close`, `pane.close`).
 - Ensure the two input-staging commands (`input.insert`, `input.replace`) never submit the buffer. No other input actions exist.
-- Keep the action surface at exactly 75 allowlisted actions. The Block, Auth, Drive, and History families are entirely absent.
+- Keep the action surface at exactly 84 allowlisted actions. The Block, Auth, Drive, and History families are entirely absent.
 - Fail closed on platforms without owner-only discovery and authenticated broker transport.
 - Preserve deterministic targeting so a request never silently mutates or reads the wrong target.
 ## Honest same-user limitations
 The broker authenticates the connecting process's OS user through kernel peer credentials. It does not prove that the caller is the official `warpctrl` binary, Warp-signed code, or a human-approved invocation. When Scripting is enabled (the default), any process running as the same OS user can:
-- Connect to the broker socket and request credentials for any of the 72 default-authorized actions.
+- Connect to the broker socket and request credentials for any of the 81 default-authorized actions.
 - Request credentials for the 3 close actions (though the user must still approve each one-shot confirmation in the app).
 - Invoke `warpctrl` as a confused deputy.
 The architecture therefore provides a **meaningful hard boundary** against:
@@ -99,7 +99,7 @@ Issuance flow:
 1. Client connects to the broker socket.
 2. Broker verifies peer UID.
 3. Client requests a credential naming one exact action.
-4. Broker checks Scripting is enabled and the action is in the 75-action catalog.
+4. Broker checks Scripting is enabled and the action is in the 84-action catalog.
 5. Broker mints a short-lived credential in memory.
 6. Client receives the credential.
 Constraints:
@@ -117,7 +117,7 @@ Three destructive actions (`window.close`, `tab.close`, `pane.close`) require on
 2. The bridge presents a brief in-app confirmation to the user.
 3. If approved, the bridge proceeds with handler dispatch.
 4. If declined, the bridge returns `user_confirmation_denied`. If the confirmation times out, the bridge returns `user_confirmation_expired`.
-The confirmation is per-invocation. There is no persistent "always allow" option. All other 72 actions execute immediately after credential verification.
+The confirmation is per-invocation. There is no persistent "always allow" option. All other 81 actions execute immediately after credential verification.
 ### Confused-deputy mitigation
 The broker authenticates the OS user, not the calling application. Any same-user process can request credentials. Mitigations:
 - Exact-action credentials prevent accidental action overreach.
@@ -158,9 +158,9 @@ Rules:
 - Index selectors resolve to concrete IDs before execution.
 - Session-scoped requests against non-terminal panes return `target_state_conflict`.
 ## Input staging safety
-The two input commands (`input.insert`, `input.replace`) only stage text in the terminal input buffer. They never submit the buffer, press Enter, or execute a command. No other input actions (`input.get`, `input.clear`, `input.mode.set`, `input.run`) exist in the 75-action catalog. Tests must prove no submission occurs.
+The two input commands (`input.insert`, `input.replace`) only stage text in the terminal input buffer. They never submit the buffer, press Enter, or execute a command. No other input actions (`input.get`, `input.clear`, `input.mode.set`, `input.run`) exist in the 84-action catalog. Tests must prove no submission occurs.
 ## Catalog boundary
-The catalog contains exactly 75 actions. The following families and actions are entirely absent:
+The catalog contains exactly 84 actions. The following families and actions are entirely absent:
 - The entire Block family (`block.list`, `block.inspect`, `block.output`).
 - The entire Auth family (`auth.status`, `auth.login`).
 - The entire Drive family (all `drive.*` actions).
@@ -220,7 +220,7 @@ Avoid logging: bearer credentials, terminal output, command text, input buffer c
 ## Required controls before catalog expansion
 Before shipping each action family:
 - Scripting must be enabled for any request to succeed.
-- The action has a documented entry in the 75-action catalog.
+- The action has a documented entry in the 84-action catalog.
 - The bridge verifies the credential grants that exact action.
 - Ambiguous, missing, and stale targets return structured errors.
 - Close actions enforce one-shot confirmation.
@@ -228,4 +228,4 @@ Before shipping each action family:
 - Tests cover the allowed path and the wrong-action-credential denial path.
 - Logs and errors do not expose credentials, terminal contents, or sensitive settings.
 - The Block, Auth, Drive, and History families remain absent from the catalog.
-- The catalog contains exactly 75 actions with 72 default-authorized and 3 confirmation-required.
+- The catalog contains exactly 84 actions with 81 default-authorized and 3 confirmation-required.

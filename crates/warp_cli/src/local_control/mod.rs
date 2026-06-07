@@ -378,6 +378,8 @@ pub enum InputCommand {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SurfaceCommand {
+    /// List available and unavailable tour surfaces.
+    List(TargetArgs),
     /// Open settings surfaces.
     #[command(subcommand)]
     Settings(SurfaceSettingsCommand),
@@ -389,6 +391,13 @@ pub enum SurfaceCommand {
     /// Open command search.
     #[command(subcommand)]
     CommandSearch(SurfaceQueryCommand),
+    /// Open the theme picker.
+    #[command(subcommand)]
+    ThemePicker(SurfaceOpenCommand),
+
+    /// Open keybinding settings.
+    #[command(subcommand)]
+    Keybindings(SurfaceOpenCommand),
 
     /// Open or toggle Warp Drive.
     #[command(subcommand)]
@@ -402,9 +411,21 @@ pub enum SurfaceCommand {
     #[command(subcommand)]
     AiAssistant(SurfaceToggleCommand),
 
-    /// Toggle code review.
+    /// Open or toggle code review.
     #[command(subcommand)]
-    CodeReview(SurfaceToggleCommand),
+    CodeReview(SurfaceOpenToggleCommand),
+
+    /// Open the project explorer.
+    #[command(subcommand)]
+    ProjectExplorer(SurfaceOpenCommand),
+
+    /// Open global search.
+    #[command(subcommand)]
+    GlobalSearch(SurfaceOpenCommand),
+
+    /// Open the conversation list.
+    #[command(subcommand)]
+    ConversationList(SurfaceOpenCommand),
 
     /// Toggle the left panel.
     #[command(subcommand)]
@@ -414,9 +435,13 @@ pub enum SurfaceCommand {
     #[command(subcommand)]
     RightPanel(SurfaceToggleCommand),
 
-    /// Toggle vertical tabs.
+    /// Open or toggle vertical tabs.
     #[command(subcommand)]
-    VerticalTabs(SurfaceToggleCommand),
+    VerticalTabs(SurfaceOpenToggleCommand),
+
+    /// Open agent management.
+    #[command(subcommand)]
+    AgentManagement(SurfaceOpenCommand),
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -429,6 +454,11 @@ pub enum SurfaceSettingsCommand {
 pub enum SurfaceQueryCommand {
     /// Open the surface with an optional seeded query.
     Open(QueryArgs),
+}
+#[derive(Debug, Clone, Subcommand)]
+pub enum SurfaceOpenCommand {
+    /// Open the surface.
+    Open(TargetArgs),
 }
 
 #[derive(Debug, Clone, Subcommand)]

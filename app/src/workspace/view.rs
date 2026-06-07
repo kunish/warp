@@ -23027,6 +23027,11 @@ impl TypedActionView for Workspace {
             ToggleVerticalTabsPanel => {
                 self.toggle_vertical_tabs_panel(ctx);
             }
+            OpenVerticalTabsPanel => {
+                if !self.vertical_tabs_panel_open {
+                    self.toggle_vertical_tabs_panel(ctx);
+                }
+            }
             ToggleNotificationMailbox { select_first } => {
                 if FeatureFlag::HOANotifications.is_enabled()
                     && *AISettings::as_ref(ctx).show_agent_notifications
@@ -23201,6 +23206,15 @@ impl TypedActionView for Workspace {
                         self.focus_active_tab(ctx);
                     }
 
+                    ctx.notify();
+                }
+            }
+            OpenAgentManagementView => {
+                if AISettings::as_ref(ctx).is_any_ai_enabled(ctx)
+                    && FeatureFlag::AgentManagementView.is_enabled()
+                {
+                    self.set_is_agent_management_view_open(true, ctx);
+                    ctx.focus(&self.agent_management_view);
                     ctx.notify();
                 }
             }
@@ -24215,6 +24229,11 @@ impl TypedActionView for Workspace {
                     self.toggle_left_panel_view(&LeftPanelAction::ProjectExplorer, is_showing, ctx);
                 }
             }
+            OpenProjectExplorer => {
+                if *CodeSettings::as_ref(ctx).show_project_explorer {
+                    self.open_left_panel_view(&LeftPanelAction::ProjectExplorer, ctx);
+                }
+            }
             ToggleWarpDrive => {
                 if WarpDriveSettings::is_warp_drive_enabled(ctx) {
                     let is_showing =
@@ -24278,6 +24297,11 @@ impl TypedActionView for Workspace {
                         is_showing,
                         ctx,
                     );
+                }
+            }
+            OpenConversationListView => {
+                if FeatureFlag::AgentViewConversationListView.is_enabled() {
+                    self.open_left_panel_view(&LeftPanelAction::ConversationListView, ctx);
                 }
             }
             ShowRewindConfirmationDialog {

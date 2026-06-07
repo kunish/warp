@@ -56,9 +56,17 @@ warpctrl input insert "git status"
 warpctrl input replace "cargo test"
 
 # Open Warp UI surfaces
+warpctrl surface list
 warpctrl surface settings open
 warpctrl surface command-palette open --query "theme"
-warpctrl surface code-review toggle
+warpctrl surface theme-picker open
+warpctrl surface keybindings open
+warpctrl surface project-explorer open
+warpctrl surface global-search open
+warpctrl surface conversation-list open
+warpctrl surface code-review open
+warpctrl surface vertical-tabs open
+warpctrl surface agent-management open
 
 # Open a file in Warp
 warpctrl file open ./src/main.rs --line 42
@@ -88,6 +96,8 @@ Target selectors can be combined when the action supports their scope:
 - Session: `--session <id>`
 
 Use IDs returned by `list`, `inspect`, or `app active` when exact targeting matters. If a selector is omitted, most scoped actions operate on the active target. Prefer explicit selectors when more than one target could reasonably match the user's request.
+
+Use `surface list` before a walkthrough or multi-step UI workflow. It reports both available and unavailable destinations with stable names and reasons. The direct `surface ... open` commands are idempotent; use them instead of toggle commands when the final open state matters. `surface list` accepts `--instance` or `--pid` for process selection but rejects window, tab, pane, and session selectors.
 
 ## Safety and limitations
 

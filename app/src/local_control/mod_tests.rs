@@ -18,6 +18,7 @@ use warpui::SingletonEntity as _;
 use super::bridge::validate_live_close_grant;
 #[cfg(unix)]
 use super::ensure_peer_uid;
+use super::resolver::validate_action_target;
 use super::{
     capabilities, ensure_feature_enabled, ensure_protocol_version, ensure_settings_allow_action,
     handle_control_request, insert_credential, issue_credential, lookup_credential,
@@ -137,8 +138,23 @@ fn tab_create_rejects_unsupported_selector_forms() {
 }
 
 #[test]
+fn surface_list_rejects_target_selectors() {
+    let error = validate_action_target(
+        ActionKind::SurfaceList,
+        &TargetSelector {
+            window: Some(WindowTarget::Active),
+            tab: None,
+            pane: None,
+            session: None,
+        },
+    )
+    .expect_err("surface.list is instance-wide");
+    assert_eq!(error.code, ErrorCode::InvalidSelector);
+}
+
+#[test]
 fn capabilities_advertises_the_complete_catalog() {
-    assert_eq!(capabilities().len(), 75);
+    assert_eq!(capabilities().len(), 84);
 }
 
 #[test]

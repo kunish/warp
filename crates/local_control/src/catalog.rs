@@ -70,6 +70,7 @@ pub enum ActionResultSpec {
     KeybindingMetadata,
     SettingList,
     SettingValue,
+    SurfaceList,
     TargetList,
     TargetMetadata,
     ThemeList,
@@ -272,17 +273,26 @@ define_action_catalog! {
     }
 
     surface {
+        SurfaceList => { name: "surface.list", status: Implemented, confirmation: false, target: Instance, params: None, result: SurfaceList },
         SurfaceSettingsOpen => { name: "surface.settings.open", status: Implemented, confirmation: false, target: Surface, params: PageQuery, result: Acknowledgement },
         SurfaceCommandPaletteOpen => { name: "surface.command_palette.open", status: Implemented, confirmation: false, target: Surface, params: Query, result: Acknowledgement },
         SurfaceCommandSearchOpen => { name: "surface.command_search.open", status: Implemented, confirmation: false, target: Surface, params: Query, result: Acknowledgement },
+        SurfaceThemePickerOpen => { name: "surface.theme_picker.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
+        SurfaceKeybindingsOpen => { name: "surface.keybindings.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceWarpDriveOpen => { name: "surface.warp_drive.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceWarpDriveToggle => { name: "surface.warp_drive.toggle", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceResourceCenterToggle => { name: "surface.resource_center.toggle", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceAiAssistantToggle => { name: "surface.ai_assistant.toggle", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
+        SurfaceCodeReviewOpen => { name: "surface.code_review.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceCodeReviewToggle => { name: "surface.code_review.toggle", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
+        SurfaceProjectExplorerOpen => { name: "surface.project_explorer.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
+        SurfaceGlobalSearchOpen => { name: "surface.global_search.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
+        SurfaceConversationListOpen => { name: "surface.conversation_list.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceLeftPanelToggle => { name: "surface.left_panel.toggle", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceRightPanelToggle => { name: "surface.right_panel.toggle", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
+        SurfaceVerticalTabsOpen => { name: "surface.vertical_tabs.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
         SurfaceVerticalTabsToggle => { name: "surface.vertical_tabs.toggle", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
+        SurfaceAgentManagementOpen => { name: "surface.agent_management.open", status: Implemented, confirmation: false, target: Surface, params: None, result: Acknowledgement },
     }
 
     file {

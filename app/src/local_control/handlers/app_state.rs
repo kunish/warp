@@ -22,6 +22,7 @@ use warpui::{AppContext, ModelContext, TypedActionView, ViewHandle};
 #[cfg(feature = "local_fs")]
 use crate::code::editor_management::CodeSource;
 use crate::local_control::handlers::layout::{create_tab, resolve_shell};
+use crate::local_control::handlers::metadata::{surface_unavailable_reason, SurfaceDestination};
 use crate::local_control::resolver::target_window_id_for_target;
 use crate::local_control::LocalControlBridge;
 use crate::palette::PaletteMode;
@@ -32,6 +33,8 @@ use crate::settings_view::SettingsSection;
 use crate::util::file::external_editor::EditorSettings;
 #[cfg(feature = "local_fs")]
 use crate::util::openable_file_type::{resolve_file_target_to_open_in_warp, EditorLayout};
+#[cfg(feature = "local_fs")]
+use crate::workspace::PaneViewLocator;
 use crate::workspace::{CommandSearchOptions, InitContent, Workspace, WorkspaceAction};
 
 const MAX_PANE_RESIZE_STEPS: u32 = 1_000;
@@ -66,6 +69,30 @@ pub(crate) fn handle(
             target,
             ctx,
         ),
+        ActionKind::SurfaceKeybindingsOpen => surface_workspace_action(
+            instance_id,
+            action,
+            SurfaceDestination::Keybindings,
+            WorkspaceAction::ShowSettingsPage(SettingsSection::Keybindings),
+            target,
+            ctx,
+        ),
+        ActionKind::SurfaceWarpDriveOpen => surface_workspace_action(
+            instance_id,
+            action,
+            SurfaceDestination::WarpDrive,
+            WorkspaceAction::OpenWarpDrive,
+            target,
+            ctx,
+        ),
+        ActionKind::SurfaceAgentManagementOpen => surface_workspace_action(
+            instance_id,
+            action,
+            SurfaceDestination::AgentManagement,
+            WorkspaceAction::OpenAgentManagementView,
+            target,
+            ctx,
+        ),
         ActionKind::SessionNext => workspace_action(
             instance_id,
             action,
@@ -88,13 +115,7 @@ pub(crate) fn handle(
         ActionKind::SurfaceCommandSearchOpen => {
             surface_command_search_open(instance_id, params, target, ctx)
         }
-        ActionKind::SurfaceWarpDriveOpen => workspace_action(
-            instance_id,
-            action,
-            WorkspaceAction::OpenWarpDrive,
-            target,
-            ctx,
-        ),
+        ActionKind::SurfaceThemePickerOpen => surface_theme_picker_open(instance_id, target, ctx),
         ActionKind::SurfaceWarpDriveToggle => workspace_action(
             instance_id,
             action,
@@ -116,6 +137,7 @@ pub(crate) fn handle(
             target,
             ctx,
         ),
+        ActionKind::SurfaceCodeReviewOpen => surface_code_review_open(instance_id, target, ctx),
         ActionKind::SurfaceCodeReviewToggle | ActionKind::SurfaceRightPanelToggle => {
             workspace_action(
                 instance_id,
@@ -125,10 +147,42 @@ pub(crate) fn handle(
                 ctx,
             )
         }
+        ActionKind::SurfaceProjectExplorerOpen => surface_workspace_action(
+            instance_id,
+            action,
+            SurfaceDestination::ProjectExplorer,
+            WorkspaceAction::OpenProjectExplorer,
+            target,
+            ctx,
+        ),
+        ActionKind::SurfaceGlobalSearchOpen => surface_workspace_action(
+            instance_id,
+            action,
+            SurfaceDestination::GlobalSearch,
+            WorkspaceAction::OpenGlobalSearch,
+            target,
+            ctx,
+        ),
+        ActionKind::SurfaceConversationListOpen => surface_workspace_action(
+            instance_id,
+            action,
+            SurfaceDestination::ConversationList,
+            WorkspaceAction::OpenConversationListView,
+            target,
+            ctx,
+        ),
         ActionKind::SurfaceLeftPanelToggle => workspace_action(
             instance_id,
             action,
             WorkspaceAction::ToggleLeftPanel,
+            target,
+            ctx,
+        ),
+        ActionKind::SurfaceVerticalTabsOpen => surface_workspace_action(
+            instance_id,
+            action,
+            SurfaceDestination::VerticalTabs,
+            WorkspaceAction::OpenVerticalTabsPanel,
             target,
             ctx,
         ),
@@ -224,6 +278,91 @@ fn workspace_action(
         workspace.handle_action(&action, ctx);
     });
     Ok(ack(instance_id, action_kind))
+}
+
+fn surface_workspace_action(
+    instance_id: &Option<InstanceId>,
+    action_kind: ActionKind,
+    destination: SurfaceDestination,
+    action: WorkspaceAction,
+    target: &TargetSelector,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    ensure_surface_available(action_kind, destination, ctx)?;
+    workspace_action(instance_id, action_kind, action, target, ctx)
+}
+
+fn surface_theme_picker_open(
+    instance_id: &Option<InstanceId>,
+    target: &TargetSelector,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    let action = ActionKind::SurfaceThemePickerOpen;
+    ensure_surface_available(action, SurfaceDestination::ThemePicker, ctx)?;
+    let workspace = target_workspace(action, target, ctx)?;
+    activate_target(&workspace, action, target, ctx)?;
+    workspace.update(ctx, |workspace, ctx| {
+        if !workspace.is_theme_chooser_open() {
+            workspace.handle_action(&WorkspaceAction::ShowThemeChooserForActiveTheme, ctx);
+        }
+    });
+    Ok(ack(instance_id, action))
+}
+
+fn surface_code_review_open(
+    instance_id: &Option<InstanceId>,
+    target: &TargetSelector,
+    ctx: &mut ModelContext<LocalControlBridge>,
+) -> Result<serde_json::Value, ControlError> {
+    let action = ActionKind::SurfaceCodeReviewOpen;
+    ensure_surface_available(action, SurfaceDestination::CodeReview, ctx)?;
+    let workspace = target_workspace(action, target, ctx)?;
+    activate_target(&workspace, action, target, ctx)?;
+    #[cfg(feature = "local_fs")]
+    {
+        let pane_group = target_pane_group(action, target, ctx)?;
+        let pane_id = target_pane_id(action, target, &pane_group, ctx)?;
+        let has_repository = pane_group.read(ctx, |pane_group, ctx| {
+            pane_group
+                .terminal_view_from_pane_id(pane_id, ctx)
+                .is_some_and(|terminal| terminal.as_ref(ctx).current_repo_path().is_some())
+        });
+        if !has_repository {
+            return Err(ControlError::new(
+                ErrorCode::TargetStateConflict,
+                "surface.code_review.open requires an active terminal in a repository",
+            ));
+        }
+        workspace.update(ctx, |workspace, ctx| {
+            workspace.handle_action(
+                &WorkspaceAction::OpenCodeReviewPanel(PaneViewLocator {
+                    pane_group_id: pane_group.id(),
+                    pane_id,
+                }),
+                ctx,
+            );
+        });
+        Ok(ack(instance_id, action))
+    }
+    #[cfg(not(feature = "local_fs"))]
+    Err(ControlError::new(
+        ErrorCode::UnsupportedAction,
+        "surface.code_review.open is unavailable without local filesystem support",
+    ))
+}
+
+fn ensure_surface_available(
+    action: ActionKind,
+    destination: SurfaceDestination,
+    ctx: &AppContext,
+) -> Result<(), ControlError> {
+    let Some(reason) = surface_unavailable_reason(destination, ctx) else {
+        return Ok(());
+    };
+    Err(ControlError::new(
+        ErrorCode::UnsupportedAction,
+        format!("{} is unavailable: {reason}", action.as_str()),
+    ))
 }
 
 fn session_reopen_closed(
