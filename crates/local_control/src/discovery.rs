@@ -108,7 +108,6 @@ pub struct InstanceRecord {
     pub executable_path: Option<PathBuf>,
     pub endpoint: Option<ControlEndpoint>,
     pub credential_broker: Option<CredentialBrokerReference>,
-    pub outside_warp_control_enabled: bool,
     pub actions: Vec<ActionMetadata>,
 }
 
@@ -133,7 +132,6 @@ impl InstanceRecord {
             app_version,
             started_at: Utc::now(),
             executable_path: std::env::current_exe().ok(),
-            outside_warp_control_enabled: endpoint.is_some(),
             credential_broker,
             endpoint,
             actions,
@@ -147,13 +145,9 @@ impl InstanceRecord {
     /// from its instance ID. The broker and app bridge still authenticate and
     /// authorize the eventual request.
     pub fn validate_local_control_authority(&self) -> Result<(), ControlError> {
-        match (
-            self.outside_warp_control_enabled,
-            &self.endpoint,
-            &self.credential_broker,
-        ) {
-            (false, None, None) => Ok(()),
-            (true, Some(endpoint), Some(credential_broker))
+        match (&self.endpoint, &self.credential_broker) {
+            (None, None) => Ok(()),
+            (Some(endpoint), Some(credential_broker))
                 if endpoint.host == "127.0.0.1"
                     && credential_broker.socket_path
                         == broker_socket_filename(&self.instance_id) =>

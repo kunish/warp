@@ -185,23 +185,21 @@ Command names are noun-oriented and discoverable. Examples:
 - `warpctrl app ping`
 - `warpctrl app active`
 - `warpctrl tab create`
-- `warpctrl tab rename --tab-id <id> "Build logs"`
-- `warpctrl window close --window-title "Scratch"`
+- `warpctrl tab rename --tab <id> "Build logs"`
+- `warpctrl window close --window <id>`
 - `warpctrl pane split --direction right`
 - `warpctrl input replace "cargo check"`
 - `warpctrl theme set "Warp Dark"`
 - `warpctrl setting set appearance.themes.system_theme true`
 - `warpctrl file open src/main.rs --line 42`
-- `warpctrl block output --block-id <id> --plain`
 ### Targeting flags
 - `--instance <instance_id>` and `--pid <pid>` select a running Warp process (mutually exclusive).
-- `--window <active|id:<id>|index:<n>|title:<title>>` with explicit aliases `--window-id`, `--window-index`, `--window-title`.
-- `--tab <active|id:<id>|index:<n>|title:<title>>` with explicit aliases `--tab-id`, `--tab-index`, `--tab-title`.
-- `--pane <active|id:<id>|index:<n>>` with explicit aliases `--pane-id`, `--pane-index`.
-- `--session <active|id:<id>|index:<n>>` with explicit aliases `--session-id`, `--session-index`.
-- `--block-id <id>` for block-scoped commands.
+- `--window <active|opaque-id>`, `--window-index <n>`, and `--window-title <title>` select a window.
+- `--tab <active|opaque-id>`, `--tab-index <n>`, and `--tab-title <title>` select a tab.
+- `--pane <active|opaque-id>` and `--pane-index <n>` select a pane.
+- `--session <active|opaque-id>` selects a session.
 - `--output-format <pretty|json|text>` controls output shape.
-Within a selector family, specifying more than one form is invalid.
+Within a selector family, specifying more than one form is invalid. Handlers reject selector forms that they cannot resolve safely.
 ### Wire protocol
 A request contains an action name from the catalog, a structured target selector, and validated parameters. A response contains success/failure status, resolved instance and target metadata, and result data or structured error data. The protocol is versioned.
 ## Error model
@@ -224,4 +222,4 @@ Every protocol or runtime failure identifies a stable machine-readable error cod
 - `target_state_conflict` — target cannot support the requested action.
 - `no_instance` — no reachable Warp instance found.
 ## Unsupported platforms
-On platforms where the owner-only filesystem discovery, Unix credential broker, or equivalent authenticated broker transport are not available, `warpctrl` fails closed. It does not fall back to unauthenticated control or weaker credential models. Windows outside-Warp publication remains disabled until discovery-record ACL enforcement and an equivalent authenticated broker transport are implemented.
+On platforms where the owner-only filesystem discovery, Unix credential broker, or equivalent authenticated broker transport are not available, `warpctrl` fails closed. It does not fall back to unauthenticated control or weaker credential models. Windows local-control publication remains disabled until discovery-record ACL enforcement and an equivalent authenticated broker transport are implemented.

@@ -1,7 +1,6 @@
 //! Metadata response builders for local-control introspection actions.
 use ::local_control::protocol::{
-    ActionNameParams, PaneTarget, SessionTarget, TabTarget, TargetSelector,
-    WindowTarget,
+    ActionNameParams, PaneTarget, SessionTarget, TabTarget, TargetSelector, WindowTarget,
 };
 use ::local_control::{
     Action, ActionKind, ActionMetadata, ControlError, ErrorCode, InstanceId, PROTOCOL_VERSION,

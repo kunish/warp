@@ -1,9 +1,9 @@
 //! Target and parameter validation for retained local-control actions.
 use ::local_control::protocol::{
     ActionNameParams, ActionParameterSpec, BindingNameParams, BooleanValueParams, ColorValueParams,
-    DirectionParams, EmptyParams, FileOpenParams, KeyParams, KeyValueParams, LimitParams,
-    NamespaceParams, PageQueryParams, QueryParams, RenameParams, ResizeParams, TabActivateParams,
-    TabCloseParams, TabCreateParams, TargetSelector, TextParams, ThemeNameParams, WindowTarget,
+    DirectionParams, EmptyParams, FileOpenParams, KeyParams, KeyValueParams, NamespaceParams,
+    PageQueryParams, QueryParams, RenameParams, ResizeParams, TabActivateParams, TabCloseParams,
+    TabCreateParams, TargetSelector, TextParams, ThemeNameParams, WindowTarget,
 };
 use ::local_control::{ActionKind, ControlError, ErrorCode, TargetScope};
 use warpui::{ModelContext, WindowId};
@@ -38,7 +38,6 @@ pub(crate) fn validate_action_params(action: &::local_control::Action) -> Result
         ActionParameterSpec::FileOpen => parse_params::<FileOpenParams>(action),
         ActionParameterSpec::Key => parse_params::<KeyParams>(action),
         ActionParameterSpec::KeyValue => parse_params::<KeyValueParams>(action),
-        ActionParameterSpec::Limit => parse_params::<LimitParams>(action),
         ActionParameterSpec::Namespace => parse_params::<NamespaceParams>(action),
         ActionParameterSpec::PageQuery => parse_params::<PageQueryParams>(action),
         ActionParameterSpec::Query => parse_params::<QueryParams>(action),
@@ -71,7 +70,6 @@ pub(crate) fn validate_action_target(
         | TargetScope::Tab
         | TargetScope::Pane
         | TargetScope::Session
-        | TargetScope::Block
         | TargetScope::Input
         | TargetScope::Surface
         | TargetScope::File => false,

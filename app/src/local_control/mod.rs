@@ -26,8 +26,7 @@
 //!                                             |
 //!                                             v
 //!                           feature flag + Settings > Scripting gate
-//!                           + protocol + action metadata
-//!                           + invocation context + required proof
+//!                           + protocol + exact action metadata
 //!                                             |
 //!                                             v
 //!                           short-lived, instance-bound, action-scoped
@@ -152,15 +151,15 @@ impl LocalControlServer {
     /// Starts, refreshes, or removes local-control publication as settings change.
     fn refresh_for_settings(&mut self, ctx: &mut ModelContext<Self>) -> Result<(), ControlError> {
         if !permissions::warp_control_cli_enabled() {
-            self.stop();
+            self.stop(ctx);
             return Ok(());
         }
-        if !outside_warp_publication_supported() {
-            self.stop();
+        if !local_control_publication_supported() {
+            self.stop(ctx);
             return Ok(());
         }
         if !crate::settings::LocalControlSettings::as_ref(ctx).is_enabled() {
-            self.stop();
+            self.stop(ctx);
             return Ok(());
         }
         if self._runtime.is_some() {
@@ -170,7 +169,10 @@ impl LocalControlServer {
     }
 
     /// Stops both listeners and removes the discovery record and broker socket.
-    fn stop(&mut self) {
+    fn stop(&mut self, ctx: &mut ModelContext<Self>) {
+        LocalControlBridge::handle(ctx).update(ctx, |bridge, ctx| {
+            bridge.cancel_all_confirmations(ctx);
+        });
         self.registered_instance = None;
         self.control_endpoint = None;
         self._runtime = None;
@@ -189,7 +191,7 @@ impl LocalControlServer {
             ));
         }
         ensure_feature_enabled()?;
-        if !outside_warp_publication_supported() {
+        if !local_control_publication_supported() {
             return Err(ControlError::new(
                 ErrorCode::LocalControlDisabled,
                 "local control is disabled until this platform enforces discovery-record ACLs",
@@ -577,7 +579,7 @@ async fn handle_control_request(
     let request_id = request.request_id;
     let requires_confirmation = request.action.kind.metadata().requires_user_confirmation;
     if requires_confirmation {
-        return handle_close_confirmation_request(state, request, grant).await;
+        return handle_close_confirmation_request(state, request, auth_token, grant).await;
     }
     let response = match state
         .bridge_spawner
@@ -626,6 +628,7 @@ async fn wait_for_confirmation(
 async fn handle_close_confirmation_request(
     state: ControlServerState,
     request: RequestEnvelope,
+    auth_token: AuthToken,
     grant: CredentialGrant,
 ) -> Response {
     let request_id = request.request_id;
@@ -664,9 +667,12 @@ async fn handle_close_confirmation_request(
     let approval = match wait_for_confirmation(pending.decision_receiver).await {
         Ok(approval) => approval,
         Err(error) => {
-            let _ = state.bridge_spawner.spawn(move |bridge, ctx| {
-                bridge.cancel_confirmation(confirmation_id, ctx);
-            }).await;
+            let _ = state
+                .bridge_spawner
+                .spawn(move |bridge, ctx| {
+                    bridge.cancel_confirmation(confirmation_id, ctx);
+                })
+                .await;
             return (
                 StatusCode::BAD_REQUEST,
                 Json(ResponseEnvelope::error(request_id, error)),
@@ -674,9 +680,29 @@ async fn handle_close_confirmation_request(
                 .into_response();
         }
     };
+    let live_grant = match state.credentials.lock() {
+        Ok(mut credentials) => lookup_credential(&mut credentials, &auth_token, &state.instance_id),
+        Err(_) => Err(ControlError::new(
+            ErrorCode::Internal,
+            "local-control credential broker is unavailable",
+        )),
+    };
+    let live_grant = match live_grant.and_then(|live_grant| {
+        approval.validate_live_grant(&live_grant)?;
+        Ok(live_grant)
+    }) {
+        Ok(live_grant) => live_grant,
+        Err(error) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ResponseEnvelope::error(request_id, error)),
+            )
+                .into_response();
+        }
+    };
     let response = match state
         .bridge_spawner
-        .spawn(move |bridge, ctx| bridge.execute_approved_close(approval, ctx))
+        .spawn(move |bridge, ctx| bridge.execute_approved_close(approval, live_grant, ctx))
         .await
     {
         Ok(response) => response,
@@ -738,7 +764,7 @@ fn lookup_credential(
     grant.verify_for_action(instance_id, grant.action)?;
     Ok(grant)
 }
-fn outside_warp_publication_supported() -> bool {
+fn local_control_publication_supported() -> bool {
     cfg!(not(target_os = "windows"))
 }
 
@@ -783,7 +809,7 @@ pub(crate) use permissions::{capabilities, ensure_settings_allow_action};
 #[cfg(test)]
 pub(crate) use resolver::{
     require_active_window_id, resolve_index_from_ids, resolve_title_from_matches,
-    validate_action_params, validate_action_target, validate_tab_create_target,
+    validate_action_params, validate_tab_create_target,
 };
 
 #[cfg(test)]

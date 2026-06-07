@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 
 use ::local_control::auth::CredentialGrant;
-use ::local_control::protocol::{PaneTarget, TabCloseMode, TabCloseParams, TabTarget, TargetSelector};
+use ::local_control::protocol::{
+    PaneTarget, TabCloseMode, TabCloseParams, TabTarget, TargetSelector,
+};
 use ::local_control::{
     Action, ActionKind, ControlError, ErrorCode, InstanceId, RequestEnvelope, ResponseEnvelope,
 };
@@ -17,12 +19,12 @@ use warpui::platform::TerminationMode;
 use warpui::{AppContext, Entity, ModelContext, SingletonEntity, ViewHandle, WindowId};
 
 use crate::local_control::confirmation_dialog::LocalControlConfirmationPrompt;
-use crate::local_control::handlers::{layout, metadata};
+use crate::local_control::handlers::{app_state, metadata, metadata_config, settings_surfaces};
 use crate::local_control::permissions::{
     ensure_action_allowed, ensure_feature_enabled, ensure_protocol_version,
 };
 use crate::local_control::resolver::{
-    target_window_id_for_target, validate_action_params,
+    target_window_id_for_target, validate_action_params, validate_action_target,
 };
 use crate::workspace::Workspace;
 
@@ -45,6 +47,20 @@ enum CloseBinding {
     },
 }
 
+pub(super) fn validate_live_close_grant(
+    approved_credential_id: &str,
+    approved_action: ActionKind,
+    live_grant: &CredentialGrant,
+) -> Result<(), ControlError> {
+    if live_grant.credential_id != approved_credential_id || live_grant.action != approved_action {
+        return Err(ControlError::new(
+            ErrorCode::UnauthorizedLocalClient,
+            "the approved close credential is no longer valid",
+        ));
+    }
+    Ok(())
+}
+
 pub(super) struct ApprovedClose {
     request: RequestEnvelope,
     grant: CredentialGrant,
@@ -53,9 +69,19 @@ pub(super) struct ApprovedClose {
 }
 
 impl ApprovedClose {
-    #[allow(dead_code)]
     pub(super) fn action_kind(&self) -> ActionKind {
         self.request.action.kind
+    }
+
+    pub(super) fn credential_id(&self) -> &str {
+        &self.grant.credential_id
+    }
+
+    pub(super) fn validate_live_grant(
+        &self,
+        live_grant: &CredentialGrant,
+    ) -> Result<(), ControlError> {
+        validate_live_close_grant(self.credential_id(), self.action_kind(), live_grant)
     }
 }
 
@@ -545,8 +571,7 @@ impl LocalControlBridge {
         }
     }
 
-    #[allow(dead_code)]
-    pub(super) fn cancel_all_confirmations(&mut self, ctx: &mut ModelContext<Self>) {
+    pub(crate) fn cancel_all_confirmations(&mut self, ctx: &mut ModelContext<Self>) {
         let pending_confirmations = self.pending_confirmations.drain().collect::<Vec<_>>();
         for (confirmation_id, pending) in pending_confirmations {
             dismiss_confirmation_prompt(pending.approval.binding.window_id(), confirmation_id, ctx);
@@ -560,10 +585,11 @@ impl LocalControlBridge {
     pub(super) fn execute_approved_close(
         &mut self,
         approval: ApprovedClose,
+        live_grant: CredentialGrant,
         ctx: &mut ModelContext<Self>,
     ) -> ResponseEnvelope {
         let request_id = approval.request.request_id;
-        let result = self.execute_approved_close_inner(approval, ctx);
+        let result = self.execute_approved_close_inner(approval, live_grant, ctx);
         match result {
             Ok(data) => ResponseEnvelope::ok(request_id, data),
             Err(error) => ResponseEnvelope::error(request_id, error),
@@ -573,6 +599,7 @@ impl LocalControlBridge {
     fn execute_approved_close_inner(
         &mut self,
         approval: ApprovedClose,
+        live_grant: CredentialGrant,
         ctx: &mut ModelContext<Self>,
     ) -> Result<serde_json::Value, ControlError> {
         if Utc::now() >= approval.expires_at {
@@ -588,7 +615,8 @@ impl LocalControlBridge {
                 "local-control bridge has no active instance identity",
             )
         })?;
-        validate_request_authority(instance_id, &approval.request.action, &approval.grant)?;
+        approval.validate_live_grant(&live_grant)?;
+        validate_request_authority(instance_id, &approval.request.action, &live_grant)?;
         ensure_action_allowed(approval.request.action.kind, ctx)?;
         let (current_binding, _) = resolve_close_binding(&approval.request, ctx)?;
         if current_binding != approval.binding {
@@ -631,47 +659,126 @@ impl LocalControlBridge {
         if let Err(error) = ensure_action_allowed(request.action.kind, ctx) {
             return ResponseEnvelope::error(request.request_id, error);
         }
-        match request.action.kind {
-            ActionKind::InstanceList => match metadata::instance(&self.instance_id) {
-                Ok(data) => ResponseEnvelope::ok(request.request_id, data),
-                Err(error) => ResponseEnvelope::error(request.request_id, error),
-            },
-            ActionKind::AppPing => match metadata::ping(&self.instance_id) {
-                Ok(data) => ResponseEnvelope::ok(request.request_id, data),
-                Err(error) => ResponseEnvelope::error(request.request_id, error),
-            },
-            ActionKind::AppVersion => match metadata::version(&self.instance_id) {
-                Ok(data) => ResponseEnvelope::ok(request.request_id, data),
-                Err(error) => ResponseEnvelope::error(request.request_id, error),
-            },
-            ActionKind::TabCreate => {
-                match layout::create_terminal_tab(&self.instance_id, &request.target, ctx) {
-                    Ok(data) => ResponseEnvelope::ok(request.request_id, data),
-                    Err(error) => ResponseEnvelope::error(request.request_id, error),
-                }
-            }
-            ActionKind::WindowClose | ActionKind::TabClose | ActionKind::PaneClose => {
-                ResponseEnvelope::error(
-                    request.request_id,
-                    ControlError::new(
-                        ErrorCode::UserConfirmationRequired,
-                        format!(
-                            "{} requires exact-request one-shot confirmation",
-                            request.action.kind.as_str()
-                        ),
-                    ),
-                )
-            }
-            action => ResponseEnvelope::error(
-                request.request_id,
-                ControlError::new(
-                    ErrorCode::UnsupportedAction,
-                    format!(
-                        "{} is not implemented by this local-control bridge",
-                        action.as_str()
-                    ),
-                ),
+        if let Err(error) = validate_action_target(request.action.kind, &request.target) {
+            return ResponseEnvelope::error(request.request_id, error);
+        }
+        let result = match request.action.kind {
+            ActionKind::InstanceList => metadata::instance(&self.instance_id),
+            ActionKind::InstanceInspect => metadata::inspect(&self.instance_id, ctx),
+            ActionKind::AppPing => metadata::ping(&self.instance_id),
+            ActionKind::AppVersion => metadata::version(&self.instance_id),
+            ActionKind::AppActive => metadata::active(&self.instance_id, ctx),
+            ActionKind::CapabilityList => Ok(metadata::capability_list()),
+            ActionKind::CapabilityInspect => metadata::capability_inspect(&request.action),
+            ActionKind::ActionList => Ok(metadata::action_list()),
+            ActionKind::ActionInspect => metadata::action_inspect(&request.action),
+            ActionKind::WindowList => metadata::window_list(&request.target, ctx),
+            ActionKind::WindowInspect => metadata::window_inspect(&request.target, ctx),
+            ActionKind::TabList => metadata::tab_list(&request.target, ctx),
+            ActionKind::TabInspect => metadata::tab_inspect(&request.target, ctx),
+            ActionKind::AppFocus
+            | ActionKind::WindowCreate
+            | ActionKind::WindowFocus
+            | ActionKind::TabCreate
+            | ActionKind::TabActivate
+            | ActionKind::TabMove
+            | ActionKind::PaneSplit
+            | ActionKind::PaneFocus
+            | ActionKind::PaneNavigate
+            | ActionKind::PaneResize
+            | ActionKind::PaneMaximize
+            | ActionKind::PaneUnmaximize
+            | ActionKind::SessionActivate
+            | ActionKind::SessionPrevious
+            | ActionKind::SessionNext
+            | ActionKind::SessionReopenClosed
+            | ActionKind::InputInsert
+            | ActionKind::InputReplace
+            | ActionKind::SurfaceSettingsOpen
+            | ActionKind::SurfaceCommandPaletteOpen
+            | ActionKind::SurfaceCommandSearchOpen
+            | ActionKind::SurfaceWarpDriveOpen
+            | ActionKind::SurfaceWarpDriveToggle
+            | ActionKind::SurfaceResourceCenterToggle
+            | ActionKind::SurfaceAiAssistantToggle
+            | ActionKind::SurfaceCodeReviewToggle
+            | ActionKind::SurfaceLeftPanelToggle
+            | ActionKind::SurfaceRightPanelToggle
+            | ActionKind::SurfaceVerticalTabsToggle
+            | ActionKind::FileOpen => app_state::handle(
+                &self.instance_id,
+                request.action.kind,
+                &request.action.params,
+                &request.target,
+                ctx,
             ),
+            ActionKind::TabRename => metadata_config::tab_rename(
+                &self.instance_id,
+                &request.target,
+                &request.action,
+                ctx,
+            ),
+            ActionKind::TabResetName => {
+                metadata_config::tab_reset_name(&self.instance_id, &request.target, ctx)
+            }
+            ActionKind::TabColorSet => metadata_config::tab_color_set(
+                &self.instance_id,
+                &request.target,
+                &request.action,
+                ctx,
+            ),
+            ActionKind::TabColorClear => {
+                metadata_config::tab_color_clear(&self.instance_id, &request.target, ctx)
+            }
+            ActionKind::PaneList => metadata::pane_list(&request.target, ctx),
+            ActionKind::PaneInspect => metadata::pane_inspect(&request.target, ctx),
+            ActionKind::PaneRename => metadata_config::pane_rename(
+                &self.instance_id,
+                &request.target,
+                &request.action,
+                ctx,
+            ),
+            ActionKind::PaneResetName => {
+                metadata_config::pane_reset_name(&self.instance_id, &request.target, ctx)
+            }
+            ActionKind::SessionList => metadata::session_list(&request.target, ctx),
+            ActionKind::SessionInspect => metadata::session_inspect(&request.target, ctx),
+            ActionKind::ThemeList => settings_surfaces::theme_list(ctx),
+            ActionKind::ThemeGet => settings_surfaces::theme_get(ctx),
+            ActionKind::ThemeSet
+            | ActionKind::ThemeSystemSet
+            | ActionKind::ThemeLightSet
+            | ActionKind::ThemeDarkSet => {
+                metadata_config::theme_set(request.action.kind, &request.action, ctx)
+            }
+            ActionKind::AppearanceGet => settings_surfaces::appearance_get(ctx),
+            ActionKind::AppearanceFontSizeIncrease
+            | ActionKind::AppearanceFontSizeDecrease
+            | ActionKind::AppearanceFontSizeReset
+            | ActionKind::AppearanceZoomIncrease
+            | ActionKind::AppearanceZoomDecrease
+            | ActionKind::AppearanceZoomReset => {
+                metadata_config::appearance_mutation(request.action.kind, ctx)
+            }
+            ActionKind::SettingList => settings_surfaces::setting_list(&request.action, ctx),
+            ActionKind::SettingGet => settings_surfaces::setting_get(&request.action, ctx),
+            ActionKind::SettingSet => metadata_config::setting_set(&request.action, ctx),
+            ActionKind::SettingToggle => metadata_config::setting_toggle(&request.action, ctx),
+            ActionKind::KeybindingList => settings_surfaces::keybinding_list(ctx),
+            ActionKind::KeybindingGet => settings_surfaces::keybinding_get(&request.action, ctx),
+            ActionKind::WindowClose | ActionKind::TabClose | ActionKind::PaneClose => {
+                Err(ControlError::new(
+                    ErrorCode::UserConfirmationRequired,
+                    format!(
+                        "{} requires exact-request one-shot confirmation",
+                        request.action.kind.as_str()
+                    ),
+                ))
+            }
+        };
+        match result {
+            Ok(data) => ResponseEnvelope::ok(request.request_id, data),
+            Err(error) => ResponseEnvelope::error(request.request_id, error),
         }
     }
 }

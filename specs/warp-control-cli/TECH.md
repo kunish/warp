@@ -34,10 +34,8 @@ Create a shared protocol crate used by both the app server and the `warpctrl` cl
   - `WindowSelector`: `Active`, `Id(WindowId)`, `Index(u32)`, `Title(String)`.
   - `TabSelector`: `Active`, `Id(TabId)`, `Index(u32)`, `Title(String)`.
   - `PaneSelector`: `Active`, `Id(PaneId)`, `Index(u32)`.
-  - `SessionSelector`: `Active`, `Id(SessionId)`, `Index(u32)`.
-  - `BlockSelector`: `Id(BlockId)`.
-  - `FileSelector`: `Path { path, line, column }`.
-- Opaque protocol-facing ID newtypes for instance/window/tab/pane/session/block identifiers.
+  - `SessionSelector`: `Active`, `Id(SessionId)`.
+- Opaque protocol-facing ID newtypes for instance/window/tab/pane/session identifiers.
 - Typed parameter payloads per action.
 - Success/error envelopes with stable machine-readable error codes from `SECURITY.md`.
 The protocol treats target IDs as opaque. Internal runtime IDs are implementation details.

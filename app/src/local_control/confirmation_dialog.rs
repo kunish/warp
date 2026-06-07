@@ -106,7 +106,7 @@ impl View for LocalControlConfirmationDialog {
         };
         let appearance = Appearance::as_ref(app);
         let description = format!(
-            "An external script requested {}.\\n\\n{}",
+            "An external script requested {}.\n\n{}",
             prompt.action.as_str(),
             prompt.target_summary
         );

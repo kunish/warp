@@ -64,7 +64,6 @@ fn probe_rejects_mismatched_instance_identity() {
         credential_broker: Some(CredentialBrokerReference {
             socket_path: "inst_expected.broker.sock".into(),
         }),
-        outside_warp_control_enabled: true,
         actions: vec![ActionKind::AppPing.metadata()],
     };
     let err = validate_probe_response(

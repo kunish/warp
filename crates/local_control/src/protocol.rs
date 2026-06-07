@@ -117,13 +117,6 @@ pub struct KeyValueParams {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LimitParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u32>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct NamespaceParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace: Option<String>,

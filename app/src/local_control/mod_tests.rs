@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use ::local_control::auth::{CredentialGrant, CredentialRequest};
 use ::local_control::protocol::{
-    Action, ActionKind, PaneSelector, PaneTarget, TabSelector, TabTarget, TargetSelector,
-    WindowSelector, WindowTarget,
+    Action, ActionKind, PaneSelector, PaneTarget, TabCloseMode, TabCloseParams, TabSelector,
+    TabTarget, TargetSelector, WindowSelector, WindowTarget,
 };
 use ::local_control::{ErrorCode, InstanceId, RequestEnvelope};
 use axum::body::Bytes;
@@ -15,6 +15,7 @@ use settings::Setting as _;
 use warp_core::features::FeatureFlag;
 use warpui::SingletonEntity as _;
 
+use super::bridge::validate_live_close_grant;
 #[cfg(unix)]
 use super::ensure_peer_uid;
 use super::{
@@ -66,16 +67,8 @@ fn protocol_version_helper_rejects_unsupported_versions() {
 }
 
 #[test]
-fn tab_create_accepts_default_active_and_window_targets() {
+fn tab_create_accepts_default_and_window_targets() {
     validate_tab_create_target(&TargetSelector::default()).expect("default target is accepted");
-
-    validate_tab_create_target(&TargetSelector {
-        window: Some(WindowTarget::Active),
-        tab: Some(TabTarget::Active),
-        pane: Some(PaneTarget::Active),
-        session: None,
-    })
-    .expect("active target is accepted");
 
     validate_tab_create_target(&TargetSelector {
         window: Some(WindowTarget::Id {
@@ -107,7 +100,7 @@ fn tab_create_accepts_default_active_and_window_targets() {
 }
 
 #[test]
-fn tab_create_rejects_concrete_targets() {
+fn tab_create_rejects_lower_level_targets() {
     let err = validate_tab_create_target(&TargetSelector {
         window: None,
         tab: Some(TabTarget::Id {
@@ -117,7 +110,7 @@ fn tab_create_rejects_concrete_targets() {
         session: None,
     })
     .expect_err("concrete tab target is rejected");
-    assert_eq!(err.code, ErrorCode::StaleTarget);
+    assert_eq!(err.code, ErrorCode::InvalidSelector);
 
     let err = validate_tab_create_target(&TargetSelector {
         window: None,
@@ -128,7 +121,7 @@ fn tab_create_rejects_concrete_targets() {
         session: None,
     })
     .expect_err("concrete pane target is rejected");
-    assert_eq!(err.code, ErrorCode::StaleTarget);
+    assert_eq!(err.code, ErrorCode::InvalidSelector);
 }
 
 #[test]
@@ -308,6 +301,32 @@ fn bridge_checks_grant_before_action_params() {
 }
 
 #[test]
+fn approved_close_requires_the_original_live_credential_and_action() {
+    let instance_id = InstanceId("inst_test".to_owned());
+    let original = CredentialGrant::new(
+        instance_id.clone(),
+        ActionKind::WindowClose,
+        Duration::minutes(5),
+    );
+    validate_live_close_grant(&original.credential_id, ActionKind::WindowClose, &original)
+        .expect("original live credential should remain valid");
+
+    let replacement =
+        CredentialGrant::new(instance_id, ActionKind::WindowClose, Duration::minutes(5));
+    let err = validate_live_close_grant(
+        &original.credential_id,
+        ActionKind::WindowClose,
+        &replacement,
+    )
+    .expect_err("replacement credential should be rejected");
+    assert_eq!(err.code, ErrorCode::UnauthorizedLocalClient);
+
+    let err = validate_live_close_grant(&original.credential_id, ActionKind::TabClose, &original)
+        .expect_err("different approved action should be rejected");
+    assert_eq!(err.code, ErrorCode::UnauthorizedLocalClient);
+}
+
+#[test]
 fn credential_insertion_prunes_expired_and_caps_active_grants() {
     let mut credentials = HashMap::new();
     let instance_id = InstanceId("inst_test".to_owned());
@@ -394,12 +413,19 @@ fn close_actions_return_confirmation_required_via_bridge() {
             ActionKind::TabClose,
             ActionKind::PaneClose,
         ] {
-            let grant = CredentialGrant::new(
-                instance_id.clone(),
-                action,
-                Duration::minutes(5),
-            );
-            let request = RequestEnvelope::new(Action::new(action));
+            let grant = CredentialGrant::new(instance_id.clone(), action, Duration::minutes(5));
+            let request_action = if action == ActionKind::TabClose {
+                Action::with_params(
+                    action,
+                    TabCloseParams {
+                        mode: TabCloseMode::Target,
+                    },
+                )
+                .expect("tab close params should serialize")
+            } else {
+                Action::new(action)
+            };
+            let request = RequestEnvelope::new(request_action);
             let response = bridge.update(&mut app, |bridge, ctx| {
                 bridge.handle_request(request, grant, ctx)
             });
@@ -407,7 +433,10 @@ fn close_actions_return_confirmation_required_via_bridge() {
                 ::local_control::ControlResponse::Error { error } => {
                     assert_eq!(error.code, ErrorCode::UserConfirmationRequired);
                 }
-                other => panic!("expected UserConfirmationRequired for {}, got {other:?}", action.as_str()),
+                other => panic!(
+                    "expected UserConfirmationRequired for {}, got {other:?}",
+                    action.as_str()
+                ),
             }
         }
     });
@@ -441,7 +470,7 @@ fn disabling_scripting_invalidates_existing_grant_and_prevents_new_grants() {
         });
         let credential = issue_credential(&state, CredentialRequest::new(ActionKind::AppPing))
             .await
-            .expect("outside-Warp credential should be issued");
+            .expect("local-control credential should be issued");
 
         app.update(|ctx| {
             LocalControlSettings::handle(ctx).update(ctx, |settings, ctx| {

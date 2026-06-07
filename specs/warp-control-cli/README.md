@@ -1,12 +1,6 @@
 # warpctrl operator README
 `warpctrl` is the provisional CLI entrypoint for controlling an already-running local Warp app instance. It is intended for scripts, demos, agent workflows, and developer automation that need to perform allowlisted Warp UI actions through the installed channel-specific Warp binary without launching the GUI.
-The first implementation slice is intentionally narrow:
-- discover compatible running Warp instances;
-- select one instance implicitly when unambiguous or explicitly with `--instance`;
-- request brokered scoped local-control credentials for the selected instance;
-- check app health and get protocol and build identity metadata with `warpctrl app ping` and `warpctrl app version`;
-- create a new terminal tab with `warpctrl tab create`.
-The local-control protocol and catalog are broader than this slice. Protocol requests for actions outside the implemented capability set fail with structured unsupported-action errors until their handlers land; command names that do not have a shipped CLI parser route use Clap's normal parser error behavior.
+The implemented command surface contains exactly 75 typed, allowlisted actions. Seventy-two actions execute after exact-action credential validation; `window.close`, `tab.close`, and `pane.close` additionally require one-shot in-app confirmation. The Block, Auth, Drive, and History families are absent, and `input.insert` plus `input.replace` stage text without submitting it.
 ## Packaging model
 `warpctrl` should be packaged as an Oz-style wrapper script rather than a standalone Rust binary. The wrapper should resolve the installed channel-specific Warp executable and invoke it with the hidden `--warpctrl` control-mode flag:
 - `crates/local_control` owns discovery records, local authentication material, client transport, protocol envelopes, action names, and error types.
@@ -61,7 +55,7 @@ Use matching app and CLI bits from the same branch or release artifact so the pr
    warpctrl tab create --instance <instance_id>
    ```
 7. Verify the running app receives focus for the selected instance and a new terminal tab appears according to Warp's normal new-tab placement behavior. The success response includes the created tab's opaque ID.
-8. In a future slice that implements `tab list`, inspect state before and after the mutation:
+8. Inspect state before and after the mutation:
    ```bash
    warpctrl tab list --instance <instance_id>
    ```
@@ -70,7 +64,6 @@ Expected failures:
 - a command that needs a selected app when no compatible app is running: exits non-zero with a no-instance error;
 - multiple ambiguous instances: exits non-zero and asks for `--instance`;
 - unsupported app build or stale discovery record: exits non-zero with a protocol, stale-target, or transport error;
-- `tab.create` not yet implemented by the running app bridge: exits non-zero with an unsupported-action error.
 ## Security model
 The local-control protocol is designed for same-user scripting, not cross-user or network access. The trust boundary is the local user account.
 - **Loopback-only listener.** Each Warp process binds its control server to `127.0.0.1` on an ephemeral port. The listener is not reachable from the network.
@@ -90,8 +83,8 @@ sequenceDiagram
     CLI->>FS: Read discovery records (user-only permissions / ACL)
     FS-->>CLI: instance_id, loopback endpoint, broker socket reference
     CLI->>CLI: Prune stale PIDs, select instance
-    CLI->>Broker: Connect to Unix socket<br/>action + context + instance
-    Broker->>Broker: Authenticate peer OS user before decode;<br/>check Settings > Scripting mode, context, scopes
+    CLI->>Broker: Connect to Unix socket<br/>exact action + selected instance
+    Broker->>Broker: Authenticate peer OS user before decode;<br/>check Scripting enabled + catalog action
     alt Disabled, invalid, or insufficient scope
         Broker-->>CLI: Structured denial
     else Grant allowed
@@ -105,12 +98,12 @@ sequenceDiagram
     end
 ```
 **Known limitations and future hardening:**
-- Windows outside-Warp local-control publication is disabled until discovery-record ACL creation and validation are implemented.
-- The current low-risk first slice permits reuse of an unexpired scoped grant. A replay policy is required before broader or higher-risk command families ship.
+- Windows local-control publication is disabled until discovery-record ACL creation and validation are implemented.
+- Non-close actions may reuse an unexpired exact-action credential. Close approval is bound to one exact request, credential identity, resolved target, and one-shot continuation.
 - Same-user malicious software can still invoke trusted wrappers or automate the desktop, so brokered credentials are least-privilege guardrails rather than a complete hostile same-user sandbox.
-- Once higher-risk handlers land, the same-user boundary becomes more sensitive. Consider per-request nonces, stricter platform secure-storage constraints, and stronger approval or policy gates.
+- Future catalog expansion should consider per-request nonces, stricter platform secure-storage constraints, and stronger approval or policy gates.
 ## Documentation review notes
 - Treat `warpctrl` as provisional executable naming until packaging signs off on final artifact aliases.
-- Keep examples scoped to discovery, app health, protocol and build identity metadata, and `tab create` until additional app-side handlers are implemented.
-- Do not document catalog commands as usable just because they exist in protocol enums or parser scaffolding; operator docs should distinguish implemented commands from planned allowlist entries.
+- Keep examples scoped to the authoritative 75-action catalog and explicitly call out the three confirmation-required close actions.
+- Do not document excluded families or actions as usable just because internal app implementations exist.
 - Windows packaging may initially follow the existing helper-wrapper pattern. Update this README when that decision is final.

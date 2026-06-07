@@ -481,7 +481,10 @@ fn input_text(
     Ok(ack(instance_id, action_kind))
 }
 
-pub(super) fn validate_staged_input_text(action: ActionKind, text: &str) -> Result<(), ControlError> {
+pub(super) fn validate_staged_input_text(
+    action: ActionKind,
+    text: &str,
+) -> Result<(), ControlError> {
     if text
         .chars()
         .any(|character| character == '\n' || character == '\r' || character.is_control())
