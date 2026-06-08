@@ -36,7 +36,9 @@ use crate::editor::InteractionState;
 use crate::menu::{Menu, MenuItem, MenuItemFields};
 use crate::notebooks::editor::model::NotebooksEditorModel;
 use crate::notebooks::editor::rich_text_styles;
-use crate::notebooks::editor::view::{EditorViewEvent, RichTextEditorConfig, RichTextEditorView};
+use crate::notebooks::editor::view::{
+    EditorViewEvent, RichTextEditorConfig, RichTextEditorView, ScrollHeaderRenderer,
+};
 use crate::notebooks::link::{NotebookLinks, SessionSource};
 use crate::pane_group::focus_state::PaneFocusHandle;
 use crate::pane_group::pane::view;
@@ -310,6 +312,7 @@ impl AIDocumentView {
                                     });
                                 }
                             }
+                            me.update_editor_scroll_header(ctx);
                             ctx.notify();
                         }
                     }
@@ -472,6 +475,7 @@ impl AIDocumentView {
             orchestration_config_block,
         };
         // Force update the editor view based on the initial document version
+        me.update_editor_scroll_header(ctx);
         me.refresh(ctx);
 
         me
@@ -509,6 +513,27 @@ impl AIDocumentView {
     /// Get the terminal view for this document. Returns None if no terminal is associated.
     pub fn terminal_view(&self) -> Option<ViewHandle<TerminalView>> {
         self.original_terminal_view.clone()
+    }
+
+    fn update_editor_scroll_header(&self, ctx: &mut ViewContext<Self>) {
+        let renderer = self
+            .orchestration_config_block
+            .as_ref()
+            .map(|config_block| {
+                let config_block = config_block.clone();
+                Box::new(move |_app: &AppContext| {
+                    Some(
+                        Container::new(ChildView::new(&config_block).finish())
+                            .with_horizontal_padding(16.)
+                            .with_padding_bottom(12.)
+                            .with_padding_top(8.)
+                            .finish(),
+                    )
+                }) as ScrollHeaderRenderer
+            });
+        self.editor.update(ctx, |editor, ctx| {
+            editor.set_scroll_header_renderer(renderer, ctx);
+        });
     }
 
     /// Attempts to populate the terminal view reference if not already set.
@@ -1066,33 +1091,9 @@ impl View for AIDocumentView {
         "AIDocumentView"
     }
 
-    fn render(&self, app: &AppContext) -> Box<dyn warpui::Element> {
-        let has_orchestration_config = AIDocumentModel::as_ref(app)
-            .get_conversation_id_for_document_id(&self.document_id)
-            .and_then(|cid| {
-                let plan_id_str = self.document_id.to_string();
-                BlocklistAIHistoryModel::as_ref(app)
-                    .conversation(&cid)
-                    .and_then(|conv| conv.orchestration_config_for_plan(&plan_id_str).map(|_| ()))
-            })
-            .is_some();
-
+    fn render(&self, _app: &AppContext) -> Box<dyn warpui::Element> {
         let mut content_column =
             Flex::column().with_cross_axis_alignment(CrossAxisAlignment::Stretch);
-
-        // Orchestration config block — shown above the editor when the
-        // conversation has an active OrchestrationConfigSnapshot.
-        if has_orchestration_config {
-            if let Some(config_block) = &self.orchestration_config_block {
-                content_column.add_child(
-                    Container::new(ChildView::new(config_block).finish())
-                        .with_horizontal_padding(16.)
-                        .with_padding_bottom(12.)
-                        .with_padding_top(8.)
-                        .finish(),
-                );
-            }
-        }
 
         let editor = Container::new(ChildView::new(&self.editor).finish())
             .with_padding_left(8.)

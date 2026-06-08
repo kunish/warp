@@ -1,7 +1,10 @@
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use markdown_parser::{parse_html, parse_markdown, FormattedText};
 use pathfinder_geometry::vector::vec2f;
@@ -25,7 +28,7 @@ use warpui::clipboard::ClipboardContent;
 use warpui::elements::{
     AnchorPair, Axis, Border, ChildAnchor, Clipped, ConstrainedBox, Container, CornerRadius,
     Dismiss, Fill, Flex, Hoverable, Icon, MouseStateHandle, OffsetPositioning, OffsetType,
-    ParentAnchor, ParentElement, PositionedElementOffsetBounds, PositioningAxis, Radius,
+    ParentAnchor, ParentElement, Point, PositionedElementOffsetBounds, PositioningAxis, Radius,
     ScrollStateHandle, Scrollable, ScrollableElement, ScrollbarWidth, Stack, XAxisAnchor,
     YAxisAnchor,
 };
@@ -43,8 +46,9 @@ use warpui::ui_components::components::{Coords, UiComponent, UiComponentStyles};
 use warpui::units::Pixels;
 use warpui::windowing::WindowManager;
 use warpui::{
-    windowing, AppContext, BlurContext, CursorInfo, Element, Entity, FocusContext, ModelHandle,
-    SingletonEntity, TypedActionView, View, ViewContext, ViewHandle, WeakViewHandle,
+    windowing, AfterLayoutContext, AppContext, BlurContext, CursorInfo, Element, Entity,
+    EventContext, FocusContext, LayoutContext, ModelHandle, PaintContext, SingletonEntity,
+    SizeConstraint, TypedActionView, View, ViewContext, ViewHandle, WeakViewHandle,
 };
 
 use super::block_insertion_menu::{BlockInsertionMenuState, BlockInsertionSource};
@@ -86,6 +90,82 @@ const MAX_EDITOR_TIP_WIDTH: f32 = 300.;
 
 /// Width of the left gutter, which holds the block insertion menu.
 const GUTTER_WIDTH: f32 = ICON_DIMENSIONS + 4.;
+
+/// Builds an optional header element that scrolls before editor content.
+pub type ScrollHeaderRenderer = Box<dyn Fn(&AppContext) -> Option<Box<dyn Element>>>;
+
+struct ScrollHeaderElement {
+    child: Box<dyn Element>,
+    measured_height: Rc<Cell<f32>>,
+    scroll_top: f32,
+    height_changed: bool,
+    size: Option<pathfinder_geometry::vector::Vector2F>,
+    origin: Option<Point>,
+}
+
+impl ScrollHeaderElement {
+    /// Creates a scroll-positioned header that reports its laid-out height.
+    fn new(child: Box<dyn Element>, measured_height: Rc<Cell<f32>>, scroll_top: f32) -> Self {
+        Self {
+            child,
+            measured_height,
+            scroll_top,
+            height_changed: false,
+            size: None,
+            origin: None,
+        }
+    }
+}
+
+impl Element for ScrollHeaderElement {
+    fn layout(
+        &mut self,
+        constraint: SizeConstraint,
+        ctx: &mut LayoutContext,
+        app: &AppContext,
+    ) -> pathfinder_geometry::vector::Vector2F {
+        let size = self.child.layout(constraint, ctx, app);
+        let height = size.y();
+        self.height_changed = self.measured_height.replace(height) != height;
+        self.size = Some(size);
+        size
+    }
+
+    fn after_layout(&mut self, ctx: &mut AfterLayoutContext, app: &AppContext) {
+        self.child.after_layout(ctx, app);
+    }
+
+    fn paint(
+        &mut self,
+        origin: pathfinder_geometry::vector::Vector2F,
+        ctx: &mut PaintContext,
+        app: &AppContext,
+    ) {
+        let scrolled_origin = origin - vec2f(0., self.scroll_top);
+        self.origin = Some(Point::from_vec2f(scrolled_origin, ctx.scene.z_index()));
+        self.child.paint(scrolled_origin, ctx, app);
+        if self.height_changed {
+            ctx.repaint_after(Duration::ZERO);
+        }
+    }
+
+    fn dispatch_event(
+        &mut self,
+        event: &warpui::event::DispatchedEvent,
+        ctx: &mut EventContext,
+        app: &AppContext,
+    ) -> bool {
+        self.child.dispatch_event(event, ctx, app)
+    }
+
+    fn size(&self) -> Option<pathfinder_geometry::vector::Vector2F> {
+        self.size
+    }
+
+    fn origin(&self) -> Option<Point> {
+        self.origin
+    }
+}
 
 pub fn init(app: &mut AppContext) {
     use warpui::keymap::macros::*;
@@ -1069,6 +1149,9 @@ pub struct RichTextEditorView {
 
     /// When true, the block insertion menu (slash menu) is disabled.
     disable_block_insertion_menu: bool,
+
+    scroll_header_renderer: Option<ScrollHeaderRenderer>,
+    scroll_header_height: Rc<Cell<f32>>,
 }
 
 #[derive(Default)]
@@ -1176,6 +1259,8 @@ impl RichTextEditorView {
             can_execute_shell_commands: config.can_execute_shell_commands.unwrap_or(true),
             disable_scrolling: config.disable_scrolling,
             disable_block_insertion_menu: config.disable_block_insertion_menu,
+            scroll_header_renderer: None,
+            scroll_header_height: Rc::new(Cell::new(0.)),
         }
     }
 
@@ -1440,6 +1525,19 @@ impl RichTextEditorView {
     /// The editor model backing this view.
     pub fn model(&self) -> &ModelHandle<NotebooksEditorModel> {
         &self.model
+    }
+
+    /// Sets a header element that scrolls before the editor buffer content.
+    pub fn set_scroll_header_renderer(
+        &mut self,
+        renderer: Option<ScrollHeaderRenderer>,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        self.scroll_header_renderer = renderer;
+        if self.scroll_header_renderer.is_none() {
+            self.scroll_header_height.set(0.);
+        }
+        ctx.notify();
     }
 
     pub fn markdown(&self, ctx: &AppContext) -> String {
@@ -2652,6 +2750,14 @@ impl View for RichTextEditorView {
         let appearance = Appearance::as_ref(app);
         let theme = appearance.theme();
         let render_state = self.model.as_ref(app).render_state();
+        let scroll_header = self
+            .scroll_header_renderer
+            .as_ref()
+            .and_then(|renderer| renderer(app));
+        if scroll_header.is_none() {
+            self.scroll_header_height.set(0.);
+        }
+        let scroll_header_height = self.scroll_header_height.get();
 
         let display_options = DisplayOptions {
             // If there's a command selection, show that instead of the text cursor.
@@ -2677,6 +2783,7 @@ impl View for RichTextEditorView {
             Vec::new(), // Not currently supporting vim in notebooks
         )
         .with_max_width(self.max_width)
+        .with_top_inset(scroll_header_height)
         .finish_scrollable();
 
         // When disable_scrolling is true, don't wrap in Scrollable to allow scroll events
@@ -2697,6 +2804,17 @@ impl View for RichTextEditorView {
 
         let mut main_stack = Stack::new();
         main_stack.add_child(main_content);
+
+        if let Some(header) = scroll_header {
+            main_stack.add_child(
+                ScrollHeaderElement::new(
+                    header,
+                    self.scroll_header_height.clone(),
+                    render_state.as_ref(app).viewport().scroll_top().as_f32(),
+                )
+                .finish(),
+            );
+        }
 
         self.render_block_insertion_menu(&mut main_stack, app);
 

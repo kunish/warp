@@ -258,7 +258,30 @@ impl<'a> RenderContentTreeRef<'a> {
         viewport_width: Pixels,
         scroll_top: Pixels,
     ) -> impl Iterator<Item = (ViewportItem, &BlockItem)> {
-        ViewportIterator::new(&self.0, scroll_top, viewport_height, viewport_width)
+        ViewportIterator::new(
+            &self.0,
+            scroll_top,
+            viewport_height,
+            viewport_width,
+            Pixels::zero(),
+        )
+    }
+
+    /// Iterator over items visible in the current viewport with non-buffer top chrome.
+    pub fn viewport_items_with_top_inset(
+        &self,
+        viewport_height: Pixels,
+        viewport_width: Pixels,
+        scroll_top: Pixels,
+        top_inset: Pixels,
+    ) -> impl Iterator<Item = (ViewportItem, &BlockItem)> {
+        ViewportIterator::new(
+            &self.0,
+            scroll_top,
+            viewport_height,
+            viewport_width,
+            top_inset,
+        )
     }
 
     /// Describe only the content of the rendering model.
@@ -396,6 +419,8 @@ pub struct RenderState {
 
     /// State of the current viewport, which determines which items are visible.
     viewport: ViewportState,
+    /// Non-buffer header height before the first content block.
+    top_inset: Pixels,
 
     styles: RichTextStyles,
 
@@ -1750,6 +1775,7 @@ impl RenderState {
             show_final_trailing_newline_when_non_empty: true,
             has_final_trailing_newline: Cell::new(true),
             viewport: ViewportState::new(viewport_width, viewport_height),
+            top_inset: Pixels::zero(),
             selections: Default::default(),
             decorations: Default::default(),
             content: RefCell::new(content),
@@ -1885,9 +1911,17 @@ impl RenderState {
         self.content.borrow().summary().lines
     }
 
-    /// The complete height of all laid-out content.
-    pub fn height(&self) -> Pixels {
+    /// The height of the laid-out buffer content, excluding the header inset.
+    pub fn content_height(&self) -> Pixels {
         (self.content.borrow().summary().height as f32).into_pixels()
+    }
+    /// The complete scrollable height of the rendered editor.
+    pub fn height(&self) -> Pixels {
+        self.top_inset + self.content_height()
+    }
+    /// The vertical inset before the first buffer block.
+    pub fn top_inset(&self) -> Pixels {
+        self.top_inset
     }
 
     pub fn width(&self) -> Pixels {
@@ -1938,8 +1972,10 @@ impl RenderState {
         let mut cursor = content.cursor::<LineCount, LayoutSummary>();
 
         Self::move_cursor_to_location(&mut cursor, location);
-
-        Some(cursor.positioned_item()?.start_y_offset - self.viewport().scroll_top())
+        Some(
+            self.top_inset + cursor.positioned_item()?.start_y_offset
+                - self.viewport().scroll_top(),
+        )
     }
 
     fn move_cursor_to_location<'a>(
@@ -2083,11 +2119,17 @@ impl RenderState {
     /// could be out of the viewport if the item is only partially visible.
     pub fn viewport_charoffset_range(&self) -> RangeSet<CharOffset> {
         let mut range_set = RangeSet::new();
+        if self.viewport.scroll_top() + self.viewport().height() <= self.top_inset {
+            return range_set;
+        }
         let content = self.content.borrow();
         let mut cursor = content.cursor::<Height, LayoutSummary>();
-        cursor.seek_clamped(&self.viewport.scroll_top().into(), SeekBias::Left);
+        let scroll_top = (self.viewport.scroll_top() - self.top_inset).max(Pixels::zero());
+        cursor.seek_clamped(&scroll_top.into(), SeekBias::Left);
 
-        let viewport_end_height = self.viewport.scroll_top() + self.viewport().height();
+        let viewport_end_height = (self.viewport.scroll_top() + self.viewport().height()
+            - self.top_inset)
+            .max(Pixels::zero());
 
         // Track the current range being built
         let mut current_range_start: Option<CharOffset> = None;
@@ -2140,11 +2182,21 @@ impl RenderState {
     /// the model.
     ///
     /// See [`ViewportState::set_size`].
-    pub fn set_viewport_size(&mut self, size_info: SizeInfo, ctx: &mut ModelContext<Self>) {
+    pub fn set_viewport_size(
+        &mut self,
+        size_info: SizeInfo,
+        top_inset: impl IntoPixels,
+        ctx: &mut ModelContext<Self>,
+    ) {
+        let top_inset = top_inset.into_pixels();
         let height_changed = size_info
             .viewport_size
             .y()
             .approx_ne(self.viewport.height().as_f32(), UNIT_MARGIN);
+        if self.top_inset != top_inset {
+            self.top_inset = top_inset;
+            ctx.notify();
+        }
 
         self.viewport
             .set_size(size_info.viewport_size, self.width(), self.height());
@@ -2530,8 +2582,14 @@ impl RenderState {
             ctx.emit(RenderEvent::PendingEditsFlushed);
         }
 
+        if self.top_inset != update.top_inset {
+            self.top_inset = update.top_inset;
+            self.update_content_sizing();
+            ctx.notify();
+        }
+
         if let Some(viewport_size) = update.viewport_size {
-            self.set_viewport_size(viewport_size, ctx);
+            self.set_viewport_size(viewport_size, update.top_inset.as_f32(), ctx);
             if self.element_tx.is_empty() {
                 // Don't emit this event when the channel has more current updates
                 // to process. This is to avoid emitting events when the viewport info is stale.
@@ -3043,8 +3101,14 @@ impl RenderState {
 
                 // If we are at the very end of the content tree, treat the last item's bound as (0, 0) on the last line.
                 (
-                    vec2f(0., height_cursor.start().height as f32),
-                    vec2f(0., height_cursor.end().height as f32),
+                    vec2f(
+                        0.,
+                        self.top_inset.as_f32() + height_cursor.start().height as f32,
+                    ),
+                    vec2f(
+                        0.,
+                        self.top_inset.as_f32() + height_cursor.end().height as f32,
+                    ),
                 )
             }
         }
@@ -3093,9 +3157,13 @@ impl RenderState {
         let content = self.content.borrow();
         let mut cursor = content.cursor::<CharOffset, LayoutSummary>();
         cursor.seek(&offset, SeekBias::Right);
-        cursor
+        let bounds = cursor
             .positioned_item()
-            .and_then(|item| item.character_bounds(offset))
+            .and_then(|item| item.character_bounds(offset))?;
+        Some(RectF::new(
+            bounds.origin() + vec2f(0., self.top_inset.as_f32()),
+            bounds.size(),
+        ))
     }
 
     pub fn character_vertical_bounds(&self, offset: CharOffset) -> Option<(Pixels, Pixels)> {
@@ -3160,7 +3228,8 @@ impl RenderState {
     pub(super) fn viewport_list_numbering(&self) -> ListNumbering {
         let content = self.content.borrow();
         let mut cursor = content.cursor::<Height, ()>();
-        cursor.seek_clamped(&self.viewport.scroll_top().into(), SeekBias::Left);
+        let scroll_top = (self.viewport.scroll_top() - self.top_inset).max(Pixels::zero());
+        cursor.seek_clamped(&scroll_top.into(), SeekBias::Left);
 
         // If the viewport starts with an ordered list item, we need to know its initial numbering.
         // This only depends on the ordered list items immediately above the viewport. To find them,
@@ -3273,6 +3342,7 @@ impl Entity for RenderState {
 /// This is how [`RenderState`] knows the viewport size.
 pub(crate) struct ElementUpdate {
     pub viewport_size: Option<SizeInfo>,
+    pub top_inset: Pixels,
     pub buffer_version: Option<BufferVersion>,
     pub pending_edits_flushed: bool,
 }
