@@ -1603,10 +1603,17 @@ impl RichTextEditorView {
         renderer: Option<ScrollHeaderRenderer>,
         ctx: &mut ViewContext<Self>,
     ) {
+        let had_scroll_header = self.scroll_header_renderer.is_some();
         self.scroll_header_renderer = renderer;
         if self.scroll_header_renderer.is_none() {
             self.scroll_header_height = Pixels::zero();
             self.scroll_header_scroll_top = Pixels::zero();
+        } else if !had_scroll_header {
+            self.scroll_header_scroll_top = Pixels::zero();
+            let content_scroll_top = self.content_scroll_top(ctx);
+            if content_scroll_top > Pixels::zero() {
+                self.scroll(content_scroll_top, ctx);
+            }
         } else {
             self.reconcile_scroll_header_after_content_scroll(ctx);
         }

@@ -1,8 +1,10 @@
 use warp::integration_testing::ai_document::{
-    assert_ai_document_content_scrolled_after_header, assert_ai_document_has_scroll_header,
-    assert_ai_document_header_at_top_with_content_at_top,
+    assert_ai_document_content_scrolled_after_header,
+    assert_ai_document_content_scrolled_up_before_header_reappears,
+    assert_ai_document_has_scroll_header, assert_ai_document_header_at_top_with_content_at_top,
     assert_ai_document_header_partially_hidden_before_content_scroll, create_ai_document,
-    open_ai_document, scroll_ai_document_by, set_orchestration_config_for_ai_document,
+    open_ai_document, record_ai_document_scroll_header_state, scroll_ai_document_by,
+    set_orchestration_config_for_ai_document,
 };
 use warp::integration_testing::pane_group::assert_num_panes_in_tab;
 use warp::integration_testing::terminal::wait_until_bootstrapped_single_pane_for_tab;
@@ -10,6 +12,7 @@ use warp::integration_testing::terminal::wait_until_bootstrapped_single_pane_for
 use super::{new_builder, Builder};
 
 const AI_DOCUMENT_KEY: &str = "ai document";
+const CONTENT_SCROLLED_SNAPSHOT_KEY: &str = "content scrolled snapshot";
 
 /// Builds enough Markdown to make the AI document editor scrollable.
 fn long_plan_content() -> String {
@@ -50,5 +53,20 @@ pub fn test_ai_document_orchestration_config_header_scrolls_with_content() -> Bu
         .with_step(
             scroll_ai_document_by(-800.)
                 .add_assertion(assert_ai_document_content_scrolled_after_header()),
+        )
+        .with_step(record_ai_document_scroll_header_state(
+            CONTENT_SCROLLED_SNAPSHOT_KEY,
+        ))
+        .with_step(
+            scroll_ai_document_by(20.).add_named_assertion_with_data_from_prior_step(
+                "Assert content scrolls upward before header reappears",
+                assert_ai_document_content_scrolled_up_before_header_reappears(
+                    CONTENT_SCROLLED_SNAPSHOT_KEY,
+                ),
+            ),
+        )
+        .with_step(
+            scroll_ai_document_by(800.)
+                .add_assertion(assert_ai_document_header_at_top_with_content_at_top()),
         )
 }

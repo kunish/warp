@@ -1,8 +1,11 @@
 use ai::agent::orchestration_config::{
     OrchestrationConfig, OrchestrationConfigStatus, OrchestrationExecutionMode,
 };
+use num_traits::Float;
 use pathfinder_geometry::vector::vec2f;
-use warpui::integration::{AssertionCallback, AssertionOutcome, StepDataMap, TestStep};
+use warpui::integration::{
+    AssertionCallback, AssertionOutcome, AssertionWithDataCallback, StepDataMap, TestStep,
+};
 use warpui::units::Pixels;
 use warpui::{App, Event, SingletonEntity, TypedActionView, ViewHandle, WindowId};
 
@@ -11,6 +14,27 @@ use crate::ai::blocklist::BlocklistAIHistoryModel;
 use crate::ai::document::ai_document_model::{AIDocumentId, AIDocumentModel, AIDocumentVersion};
 use crate::integration_testing::view_getters::{single_terminal_view_for_tab, workspace_view};
 use crate::workspace::WorkspaceAction;
+
+const SCROLL_OFFSET_FUDGE_FACTOR_PIXELS: Pixels = Pixels::new(0.01);
+#[derive(Debug, Clone, Copy)]
+struct AIDocumentScrollHeaderState {
+    has_header: bool,
+    header_scroll_top: Pixels,
+    header_height: Pixels,
+    content_scroll_top: Pixels,
+}
+
+fn scroll_offset_approx_zero(value: Pixels) -> bool {
+    scroll_offsets_approx_eq(value, Pixels::zero())
+}
+
+fn scroll_offsets_approx_eq(a: Pixels, b: Pixels) -> bool {
+    (a - b).abs() < SCROLL_OFFSET_FUDGE_FACTOR_PIXELS
+}
+
+fn scroll_offset_approx_lt(a: Pixels, b: Pixels) -> bool {
+    a < b && !scroll_offsets_approx_eq(a, b)
+}
 
 /// Creates an AI document associated with the first terminal pane.
 pub fn create_ai_document(
@@ -106,6 +130,23 @@ pub fn scroll_ai_document_by(delta_y: f32) -> TestStep {
     })
 }
 
+/// Records the AI document scroll-header state for a later assertion.
+pub fn record_ai_document_scroll_header_state(snapshot_key: impl Into<String>) -> TestStep {
+    let snapshot_key = snapshot_key.into();
+    TestStep::new("Record AI document scroll-header state").with_action(
+        move |app, window_id, data| {
+            let state = match ai_document_scroll_header_state(app, window_id) {
+                Ok(state) => state,
+                Err(outcome) => panic!(
+                    "failed to record AI document scroll-header state: {:?}",
+                    outcome.as_failure_message()
+                ),
+            };
+            data.insert(snapshot_key.clone(), state);
+        },
+    )
+}
+
 /// Asserts whether the AI document editor has a scroll header.
 pub fn assert_ai_document_has_scroll_header(expected: bool) -> AssertionCallback {
     Box::new(move |app, window_id| {
@@ -134,8 +175,8 @@ pub fn assert_ai_document_header_at_top_with_content_at_top() -> AssertionCallba
             window_id,
             |has_header, header_scroll_top, _, content_scroll_top| {
                 has_header
-                    && header_scroll_top == Pixels::zero()
-                    && content_scroll_top == Pixels::zero()
+                    && scroll_offset_approx_zero(header_scroll_top)
+                    && scroll_offset_approx_zero(content_scroll_top)
             },
             "Expected AI document header and content to be at the top",
         )
@@ -150,9 +191,9 @@ pub fn assert_ai_document_header_partially_hidden_before_content_scroll() -> Ass
             window_id,
             |has_header, header_scroll_top, header_height, content_scroll_top| {
                 has_header
-                    && header_scroll_top != Pixels::zero()
-                    && header_scroll_top < header_height
-                    && content_scroll_top == Pixels::zero()
+                    && !scroll_offset_approx_zero(header_scroll_top)
+                    && scroll_offset_approx_lt(header_scroll_top, header_height)
+                    && scroll_offset_approx_zero(content_scroll_top)
             },
             "Expected AI document header to be partially hidden before content scrolls",
         )
@@ -167,12 +208,42 @@ pub fn assert_ai_document_content_scrolled_after_header() -> AssertionCallback {
             window_id,
             |has_header, header_scroll_top, header_height, content_scroll_top| {
                 has_header
-                    && header_scroll_top == header_height
-                    && header_height != Pixels::zero()
-                    && content_scroll_top != Pixels::zero()
+                    && scroll_offsets_approx_eq(header_scroll_top, header_height)
+                    && !scroll_offset_approx_zero(header_height)
+                    && !scroll_offset_approx_zero(content_scroll_top)
             },
             "Expected AI document content to scroll after the header",
         )
+    })
+}
+
+/// Asserts content scroll moved upward while the header remained fully consumed.
+pub fn assert_ai_document_content_scrolled_up_before_header_reappears(
+    snapshot_key: impl Into<String>,
+) -> AssertionWithDataCallback {
+    let snapshot_key = snapshot_key.into();
+    Box::new(move |app, window_id, data| {
+        let Some(previous) = data.get::<_, AIDocumentScrollHeaderState>(&snapshot_key) else {
+            return AssertionOutcome::failure(format!(
+                "Missing AI document scroll-header state snapshot for key {snapshot_key}"
+            ));
+        };
+        let current = match ai_document_scroll_header_state(app, window_id) {
+            Ok(state) => state,
+            Err(outcome) => return outcome,
+        };
+        if current.has_header
+            && !scroll_offset_approx_zero(current.header_height)
+            && scroll_offsets_approx_eq(current.header_scroll_top, current.header_height)
+            && !scroll_offset_approx_zero(current.content_scroll_top)
+            && scroll_offset_approx_lt(current.content_scroll_top, previous.content_scroll_top)
+        {
+            AssertionOutcome::Success
+        } else {
+            AssertionOutcome::failure(format!(
+                "Expected content to scroll upward before header reappears: previous={previous:?}, current={current:?}"
+            ))
+        }
     })
 }
 
@@ -201,6 +272,23 @@ fn single_ai_document_view(
     }
 }
 
+fn ai_document_scroll_header_state(
+    app: &mut App,
+    window_id: WindowId,
+) -> Result<AIDocumentScrollHeaderState, AssertionOutcome> {
+    let document_view = single_ai_document_view(app, window_id)?;
+    let (has_header, header_scroll_top, header_height, content_scroll_top) = document_view
+        .read(app, |view, ctx| {
+            view.editor_scroll_header_state_for_integration_test(ctx)
+        });
+    Ok(AIDocumentScrollHeaderState {
+        has_header,
+        header_scroll_top,
+        header_height,
+        content_scroll_top,
+    })
+}
+
 /// Applies a predicate to the AI document scroll-header state.
 fn assert_scroll_header_state(
     app: &mut App,
@@ -208,24 +296,18 @@ fn assert_scroll_header_state(
     predicate: impl FnOnce(bool, Pixels, Pixels, Pixels) -> bool,
     failure_message: &str,
 ) -> AssertionOutcome {
-    let document_view = match single_ai_document_view(app, window_id) {
-        Ok(view) => view,
+    let state = match ai_document_scroll_header_state(app, window_id) {
+        Ok(state) => state,
         Err(outcome) => return outcome,
     };
-    let (has_header, header_scroll_top, header_height, content_scroll_top) = document_view
-        .read(app, |view, ctx| {
-            view.editor_scroll_header_state_for_integration_test(ctx)
-        });
     if predicate(
-        has_header,
-        header_scroll_top,
-        header_height,
-        content_scroll_top,
+        state.has_header,
+        state.header_scroll_top,
+        state.header_height,
+        state.content_scroll_top,
     ) {
         AssertionOutcome::Success
     } else {
-        AssertionOutcome::failure(format!(
-            "{failure_message}: has_header={has_header}, header_scroll_top={header_scroll_top:?}, header_height={header_height:?}, content_scroll_top={content_scroll_top:?}"
-        ))
+        AssertionOutcome::failure(format!("{failure_message}: state={state:?}"))
     }
 }
