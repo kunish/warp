@@ -102,6 +102,7 @@ impl NumberShortcutButtonsConfig {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_scroll_state(mut self, scroll_state: ClippedScrollStateHandle) -> Self {
         self.scroll_state = Some(scroll_state);
         self

@@ -7483,6 +7483,10 @@ impl TerminalView {
     pub fn ai_controller(&self) -> &ModelHandle<BlocklistAIController> {
         &self.ai_controller
     }
+    #[cfg(test)]
+    pub(crate) fn ai_action_model_for_test(&self) -> &ModelHandle<BlocklistAIActionModel> {
+        &self.ai_action_model
+    }
 
     pub fn ai_context_model(&self) -> &ModelHandle<BlocklistAIContextModel> {
         &self.ai_context_model
