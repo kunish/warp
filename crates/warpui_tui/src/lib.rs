@@ -45,7 +45,10 @@ mod event;
 mod geometry;
 
 pub use buffer::{Cell, TuiBuffer, TuiStyle};
-pub use elements::{TuiElement, TuiPresentationContext, TuiRenderOutput};
+pub use elements::{
+    TuiChildView, TuiColumn, TuiContainer, TuiElement, TuiEventHandler, TuiPresentationContext,
+    TuiRenderOutput, TuiText,
+};
 pub use event::{
     crossterm_event_to_warp_event, TuiDispatchEventResult, TuiEventContext, TuiEventDispatchResult,
 };
