@@ -333,13 +333,7 @@ fn map_conversation_status(
                         None
                     }
                 });
-            match renderable_error {
-                Some(error) => classify_renderable_error(error),
-                None => (
-                    AgentTaskState::Error,
-                    Some(TaskStatusUpdate::message("Agent encountered an error")),
-                ),
-            }
+            task_update_for_conversation_error(renderable_error)
         }
         ConversationStatus::Cancelled => (
             AgentTaskState::Cancelled,
@@ -350,6 +344,29 @@ fn map_conversation_status(
             Some(TaskStatusUpdate::message(format!(
                 "The agent got stuck waiting for user confirmation on the action: {blocked_action}"
             ))),
+        ),
+    }
+}
+
+/// Maps a conversation-level error to a task update. While an automatic resume is
+/// pending for the error, the task is kept IN_PROGRESS so the run is not terminated
+/// out from under the recovery attempt (terminal task states tear down cloud
+/// executions). If the resume fails or times out, the follow-up error (or the
+/// driver's final classification) reports the terminal state.
+pub(crate) fn task_update_for_conversation_error(
+    error: Option<&RenderableAIError>,
+) -> (AgentTaskState, Option<TaskStatusUpdate>) {
+    match error {
+        Some(error) if error.will_attempt_resume() => (
+            AgentTaskState::InProgress,
+            Some(TaskStatusUpdate::message(
+                "Connection lost while receiving the agent response; attempting to resume.",
+            )),
+        ),
+        Some(error) => classify_renderable_error(error),
+        None => (
+            AgentTaskState::Error,
+            Some(TaskStatusUpdate::message("Agent encountered an error")),
         ),
     }
 }

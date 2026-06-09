@@ -61,7 +61,7 @@ pub struct ResponseStream {
 
     /// Whether we should attempt to resume the conversation after the stream finishes.
     ///
-    /// This is set when we receive a retryable error after client actions have been received
+    /// This is set when we receive a retryable error that is not being retried in-request
     /// and `can_attempt_resume_on_error` is true.
     should_resume_conversation_after_stream_finished: bool,
 
@@ -120,6 +120,11 @@ impl ResponseStream {
     /// Returns true if we should attempt to resume the conversation after the stream finishes.
     pub fn should_resume_conversation_after_stream_finished(&self) -> bool {
         self.should_resume_conversation_after_stream_finished
+    }
+
+    /// Returns true if this request may trigger an automatic conversation resume on error.
+    pub fn can_attempt_resume_on_error(&self) -> bool {
+        self.can_attempt_resume_on_error
     }
 
     /// Helper function to emit AgentModeError telemetry for error that is retryable (not user visible).
@@ -293,12 +298,13 @@ impl ResponseStream {
                     return;
                 }
 
-                // If we can't retry (because client actions were received) but the error is
-                // retryable and we're allowed to attempt a resume, signal that the controller
-                // should resume the conversation after the stream completes.
-                let should_attempt_resume = self.has_received_client_actions
-                    && is_retryable
-                    && self.can_attempt_resume_on_error;
+                // If the error is retryable but we're not retrying in-request (because client
+                // actions were already received, the retry budget is exhausted, or we're
+                // offline), signal that the controller should resume the conversation after the
+                // stream completes. Unlike an in-request retry (which re-sends the same request
+                // and is unsafe once actions have executed), a resume sends a fresh
+                // ResumeConversation request and is safe at any point.
+                let should_attempt_resume = is_retryable && self.can_attempt_resume_on_error;
                 if should_attempt_resume {
                     self.should_resume_conversation_after_stream_finished = true;
                 }

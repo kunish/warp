@@ -7,7 +7,10 @@ use warp_graphql::ai::{AgentTaskState, PlatformErrorCode};
 use warpui::App;
 
 use super::super::history_model::{BlocklistAIHistoryEvent, BlocklistAIHistoryModel};
-use super::{classify_renderable_error, map_cli_session_status, LocalAgentTaskSyncModel};
+use super::{
+    classify_renderable_error, map_cli_session_status, task_update_for_conversation_error,
+    LocalAgentTaskSyncModel,
+};
 use crate::ai::agent::conversation::{AIConversation, AIConversationId};
 use crate::ai::agent::RenderableAIError;
 use crate::ai::ambient_agents::AmbientAgentTaskId;
@@ -119,6 +122,46 @@ fn other_error_is_error_with_internal() {
         AgentTaskState::Error,
         Some(PlatformErrorCode::InternalError),
         Some("something broke"),
+    );
+}
+
+// --- task_update_for_conversation_error ---
+
+#[test]
+fn resume_pending_error_keeps_task_in_progress() {
+    assert_update(
+        task_update_for_conversation_error(Some(&RenderableAIError::Other {
+            error_message: "connection reset".into(),
+            will_attempt_resume: true,
+            waiting_for_network: false,
+        })),
+        AgentTaskState::InProgress,
+        None,
+        Some("attempting to resume"),
+    );
+}
+
+#[test]
+fn non_resumable_error_is_terminal() {
+    assert_update(
+        task_update_for_conversation_error(Some(&RenderableAIError::Other {
+            error_message: "connection reset".into(),
+            will_attempt_resume: false,
+            waiting_for_network: false,
+        })),
+        AgentTaskState::Error,
+        Some(PlatformErrorCode::InternalError),
+        Some("connection reset"),
+    );
+}
+
+#[test]
+fn missing_error_is_terminal_error() {
+    assert_update(
+        task_update_for_conversation_error(None),
+        AgentTaskState::Error,
+        None,
+        Some("Agent encountered an error"),
     );
 }
 
