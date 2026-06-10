@@ -914,9 +914,6 @@ pub trait RichTextEditorModel: CoreEditorModel {
         self.validate(ctx);
     }
 
-    /// Reset the buffer from the JSON contents of a `.ipynb` (Jupyter) notebook.
-    /// The notebook is converted directly into formatted text rather than
-    /// re-parsed through Markdown (see [`Buffer::from_ipynb`]).
     fn reset_with_ipynb(&mut self, ipynb: &str, ctx: &mut ModelContext<Self::T>) {
         let state = InitialBufferState::ipynb(ipynb);
 

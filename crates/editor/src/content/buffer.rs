@@ -62,8 +62,6 @@ use crate::render::model::{
 pub enum ContentFormat {
     Markdown,
     PlainText,
-    /// Jupyter notebook JSON (nbformat v4), converted directly into formatted
-    /// text rather than re-parsed through Markdown.
     Ipynb,
 }
 
@@ -872,10 +870,8 @@ impl Buffer {
     }
 
     /// Construct a [`Buffer`] from the JSON contents of a `.ipynb` (Jupyter)
-    /// notebook. The notebook is converted directly into formatted text (it is
-    /// not round-tripped through a Markdown string). On any parse failure the
-    /// raw contents are shown verbatim rather than re-interpreted as Markdown,
-    /// so the user never sees a blank view.
+    /// notebook. The notebook is converted directly into formatted text.
+    /// On any parse failure the raw contents are shown verbatim
     pub(crate) fn from_ipynb(
         ipynb: &str,
         embedded_item_conversion: Option<EmbeddedItemConversion>,
@@ -891,9 +887,6 @@ impl Buffer {
                     safe: ("Failed to render Jupyter notebook; showing raw contents"),
                     full: ("Failed to render Jupyter notebook: {e}")
                 }
-
-                // Show the raw notebook contents verbatim rather than feeding
-                // them back through the Markdown renderer.
                 ipynb_parser::raw_fallback_formatted_text(ipynb)
             }
         };

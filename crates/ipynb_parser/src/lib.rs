@@ -5,13 +5,6 @@
 //! existing content (markdown cells, code cells, and saved outputs). It does
 //! not execute cells or round-trip edits back to the file.
 //!
-//! Building [`FormattedText`] directly (rather than emitting a Markdown string
-//! that is then re-parsed) means the notebook is parsed once, and code/output
-//! content is placed into structured [`FormattedTextLine`] values instead of
-//! being serialized into Markdown code fences. As a result, untrusted notebook
-//! data (a code cell's language tag, an output image's payload) lives in struct
-//! fields and can never break out of a Markdown fence or image URL.
-//!
 //! Only nbformat v4 is supported. Anything that fails to parse as a v4 notebook
 //! returns an [`IpynbError`] so callers can fall back to showing the raw file
 //! contents instead of a blank view.
@@ -142,8 +135,7 @@ fn push_markdown_block(lines: &mut Vec<FormattedTextLine>, content: &str, gfm_ta
 }
 
 /// Append a code block with the given language tag (empty for none), separated
-/// from surrounding blocks by a line break. The language and code are stored as
-/// struct fields, so neither can break out of a Markdown fence.
+/// from surrounding blocks by a line break.
 fn push_code_block(lines: &mut Vec<FormattedTextLine>, language: &str, content: &str) {
     lines.push(FormattedTextLine::CodeBlock(CodeBlockText {
         lang: language.to_string(),
@@ -205,11 +197,7 @@ fn push_text_output(lines: &mut Vec<FormattedTextLine>, text: &str) {
     }
 }
 
-/// Append an embedded image output as a base64 data-URI image. The image data
-/// is already base64 in the notebook, so we strip whitespace, bound the size,
-/// and validate that it really is base64 before embedding it. Invalid data is
-/// not embedded — it would render as a broken image — and the user is shown a
-/// clear message in its place instead.
+/// Append an embedded image output as a base64 data-URI image.
 fn push_image(lines: &mut Vec<FormattedTextLine>, mime: &str, value: &serde_json::Value) {
     let base64: String = value_to_text(value)
         .chars()
@@ -301,12 +289,6 @@ fn value_to_text(value: &serde_json::Value) -> String {
 }
 
 /// Sanitize a notebook-declared language into a safe code-block language tag.
-/// Notebook metadata is untrusted: an arbitrary `language_info.name` could
-/// contain whitespace or other junk. We only keep values that look like a real
-/// language token — ASCII alphanumerics plus the few punctuation marks used in
-/// language names such as `c++`, `c#`, and `objective-c` — within a sane
-/// length. Anything else yields an empty tag (an unhighlighted, but safe,
-/// code block).
 fn sanitize_language(raw: &str) -> String {
     let trimmed = raw.trim();
     let is_safe = !trimmed.is_empty()
