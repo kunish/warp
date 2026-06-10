@@ -182,7 +182,8 @@ fn push_output(lines: &mut Vec<FormattedTextLine>, output: &Output) {
 /// Append a text output as a plain (unhighlighted) code block, truncating
 /// oversized output. Empty output is skipped.
 fn push_text_output(lines: &mut Vec<FormattedTextLine>, text: &str) {
-    let text = text.trim_end_matches('\n');
+    let stripped = strip_ansi(text);
+    let text = stripped.trim_end_matches('\n');
     if text.is_empty() {
         return;
     }
