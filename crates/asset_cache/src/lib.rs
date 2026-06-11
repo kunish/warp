@@ -19,7 +19,8 @@ impl AsyncAssetType for UrlAssetWithoutPersistence {}
 pub struct DataUriAsset;
 impl AsyncAssetType for DataUriAsset {}
 
-const MAX_DATA_URI_PAYLOAD_BYTES: usize = 16 * 1024 * 1024;
+
+pub const MAX_DATA_URI_PAYLOAD_BYTES: usize = 16 * 1024 * 1024;
 
 /// Namespace marker for URL-based async asset sources with persistence.
 ///
@@ -46,6 +47,22 @@ pub fn url_source(url: impl Into<String>) -> AssetSource {
     }
 }
 
+/// Returns `true` if `source` is a base64 `data:` URI whose encoded payload
+/// exceeds `MAX_DATA_URI_PAYLOAD_BYTES`. Non-`data:` URIs and `data:` URIs
+/// without a `;base64` marker return `false`.
+pub fn data_uri_exceeds_limit(source: &str) -> bool {
+    let Some((header, payload)) = source
+        .strip_prefix("data:")
+        .and_then(|rest| rest.split_once(','))
+    else {
+        return false;
+    };
+    header
+        .split(';')
+        .any(|segment| segment.eq_ignore_ascii_case("base64"))
+        && payload.len() > MAX_DATA_URI_PAYLOAD_BYTES
+}
+
 /// Creates an [`AssetSource::Async`] that decodes an inline base64 `data:` URI
 /// (e.g. `data:image/png;base64,<payload>`) into its raw bytes.
 pub fn data_uri_source(source: &str) -> Option<AssetSource> {
@@ -59,8 +76,7 @@ pub fn data_uri_source(source: &str) -> Option<AssetSource> {
     }
 
     // `source` is untrusted; reject oversized payloads before cloning/decoding
-    // so a crafted image cannot spike memory usage.
-    if payload.len() > MAX_DATA_URI_PAYLOAD_BYTES {
+    if data_uri_exceeds_limit(source) {
         return None;
     }
 
