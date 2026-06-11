@@ -73,7 +73,7 @@ Figma: none provided
 
 18. Local conversations from different checkouts and cloud runs from different environments match one known `owner/repo` selection when their available metadata identifies that same repository.
 
-19. A recorded working directory that cannot be safely resolved in the current context, including a path from another machine or an unavailable remote session, does not produce a repository association.
+19. A recorded working directory does not produce a repository association when Warp can identify it as outside the current local context: a directory known only from cloud-synced conversation metadata (recorded on another machine), a cloud run's environment directory, a non-absolute path, or an absolute path that does not exist as a directory on the current machine. Recorded directories carry no terminal-session provenance today, so a locally recorded path from a remote session (for example, SSH) that coincides with an existing local directory is treated as a local path until session provenance is captured.
 
 20. Warp does not guess repository association from titles, prompts, branch names, arbitrary path text, or similarly ambiguous content.
 
