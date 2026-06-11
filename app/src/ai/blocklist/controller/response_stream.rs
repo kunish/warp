@@ -32,6 +32,117 @@ impl ResponseStreamId {
     }
 }
 
+/// Spawns the multi-agent API request for `params`, routing the result to
+/// `ResponseStream::handle_response_stream_result`.
+///
+/// When the params carry a Grok OAuth token that is already past its hard
+/// expiry, the request first blocks on a single refresh attempt so it goes
+/// out with a usable token. A failed attempt is logged and the request
+/// proceeds with the stale token — the server is the authority on validity.
+fn spawn_request(
+    #[cfg_attr(target_family = "wasm", allow(unused_mut))] mut params: api::RequestParams,
+    cancellation_rx: oneshot::Receiver<()>,
+    request_id: Uuid,
+    ctx: &mut ModelContext<ResponseStream>,
+) {
+    let server_api = ServerApiProvider::as_ref(ctx).get();
+
+    #[cfg(not(target_family = "wasm"))]
+    {
+        use ::ai::api_keys::ApiKeyManager;
+
+        let grok_refresh_token = claim_expired_grok_token_refresh(&mut params, ctx);
+        let _ = ctx.spawn(
+            async move {
+                // `None`: no refresh was needed; `Some(None)`: the attempt
+                // failed; `Some(Some(response))`: refreshed successfully.
+                let refresh_outcome = match grok_refresh_token {
+                    Some(refresh_token) => Some(refresh_expired_grok_token(refresh_token).await),
+                    None => None,
+                };
+                if let Some(Some(response)) = &refresh_outcome {
+                    if let Some(api_keys) = params.api_keys.as_mut() {
+                        api_keys.grok_oauth_access_token = response.access_token.clone();
+                    }
+                }
+                let stream = generate_multi_agent_output(server_api, params, cancellation_rx).await;
+                (refresh_outcome, stream)
+            },
+            move |me, (refresh_outcome, stream), ctx| {
+                if let Some(outcome) = refresh_outcome {
+                    ApiKeyManager::handle(ctx).update(ctx, |manager, ctx| {
+                        manager.finish_blocking_grok_refresh(outcome, ctx);
+                    });
+                }
+                me.handle_response_stream_result(request_id, stream, ctx);
+            },
+        );
+    }
+
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = ctx.spawn(
+            async move { generate_multi_agent_output(server_api, params, cancellation_rx).await },
+            move |me, stream, ctx| {
+                me.handle_response_stream_result(request_id, stream, ctx);
+            },
+        );
+    }
+}
+
+/// Claims a single request-blocking refresh of the Grok OAuth token when the
+/// stored token is already past its hard expiry, returning the refresh token
+/// to exchange. Also swaps the request's Grok token for the latest stored
+/// one, since a background refresh may have rotated it after the params were
+/// built (e.g. for retries).
+///
+/// The caller MUST report the refresh outcome via
+/// `ApiKeyManager::finish_blocking_grok_refresh` to release the claim.
+#[cfg(not(target_family = "wasm"))]
+fn claim_expired_grok_token_refresh(
+    params: &mut api::RequestParams,
+    ctx: &mut ModelContext<ResponseStream>,
+) -> Option<String> {
+    use ::ai::api_keys::{ApiKeyManager, GrokTokens};
+
+    let api_keys = params.api_keys.as_mut()?;
+    // An empty token means no Grok subscription is connected or BYO auth is
+    // disallowed by policy; either way there's nothing to refresh.
+    if api_keys.grok_oauth_access_token.is_empty() {
+        return None;
+    }
+    ApiKeyManager::handle(ctx).update(ctx, |manager, _| {
+        if let Some(token) = manager
+            .grok_tokens()
+            .and_then(GrokTokens::access_token_for_request)
+        {
+            api_keys.grok_oauth_access_token = token.to_owned();
+        }
+        manager.claim_blocking_grok_refresh()
+    })
+}
+
+/// Performs the single blocking Grok token refresh attempt for a request,
+/// logging the outcome. Returns `None` when the attempt failed.
+#[cfg(not(target_family = "wasm"))]
+async fn refresh_expired_grok_token(
+    refresh_token: String,
+) -> Option<::ai::grok_subscription::oauth::TokenResponse> {
+    use ::ai::grok_subscription::oauth;
+
+    log::info!("Grok OAuth token is past its expiry; refreshing it before sending the request");
+    match oauth::refresh_access_token(&refresh_token).await {
+        Ok(response) => Some(response),
+        Err(err) => {
+            log::error!(
+                "Failed to refresh the expired Grok OAuth token before a request; \
+                 sending the stale token: {err:#}"
+            );
+            None
+        }
+    }
+}
+
 /// Model wrapping an agent API response stream.
 ///
 /// Emits events when the output corresponding to the stream is updated, typically after receiving
@@ -82,21 +193,11 @@ impl ResponseStream {
         can_attempt_resume_on_error: bool,
         ctx: &mut ModelContext<Self>,
     ) -> Self {
-        let server_api = ServerApiProvider::as_ref(ctx).get();
         let (cancellation_tx, cancellation_rx) = oneshot::channel();
         let start_time = Local::now();
 
         let request_id = Uuid::new_v4();
-        let params_clone = params.clone();
-        let _ =
-            ctx.spawn(
-                async move {
-                    generate_multi_agent_output(server_api, params_clone, cancellation_rx).await
-                },
-                move |me, stream, ctx| {
-                    me.handle_response_stream_result(request_id, stream, ctx);
-                },
-            );
+        spawn_request(params.clone(), cancellation_rx, request_id, ctx);
         Self {
             id: ResponseStreamId(Uuid::new_v4().to_string()),
             params: params.clone(),
@@ -151,14 +252,7 @@ impl ResponseStream {
 
         let request_id = Uuid::new_v4();
         self.current_request_id = Some(request_id);
-        let params = self.params.clone();
-        let server_api = ServerApiProvider::as_ref(ctx).get();
-        let _ = ctx.spawn(
-            async move { generate_multi_agent_output(server_api, params, cancellation_rx).await },
-            move |me, stream, ctx| {
-                me.handle_response_stream_result(request_id, stream, ctx);
-            },
-        );
+        spawn_request(self.params.clone(), cancellation_rx, request_id, ctx);
     }
 
     /// Cancels the stream. The conversation_id is preserved in the emitted event for async handling.
