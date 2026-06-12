@@ -3216,7 +3216,7 @@ input ShareBlockInput {
   block: BlockInput!
   sharedSessionId: String
   serializedBlock: String
-  blockUuid: String
+  blockId: String
 }
 
 type ShareBlockOutput implements Response {

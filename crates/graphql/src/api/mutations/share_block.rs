@@ -19,7 +19,7 @@ pub struct ShareBlockToSessionVariables {
     pub request_context: RequestContext,
     pub shared_session_id: String,
     pub serialized_block: String,
-    pub block_uuid: String,
+    pub block_id: String,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
@@ -49,7 +49,7 @@ pub struct ShareBlockToSession {
             block: $block,
             sharedSessionId: $shared_session_id,
             serializedBlock: $serialized_block,
-            blockUuid: $block_uuid
+            blockId: $block_id
         },
         requestContext: $request_context
     )]

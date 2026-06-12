@@ -132,11 +132,6 @@ impl BlockClient for ServerApi {
         serialized_block: &SerializedBlock,
         shared_session_id: &str,
     ) -> Result<(), anyhow::Error> {
-        let block_uuid = uuid::Uuid::new_v5(
-            &uuid::Uuid::NAMESPACE_OID,
-            serialized_block.id.as_str().as_bytes(),
-        )
-        .to_string();
         let serialized_json_bytes = serialized_block
             .to_json()
             .map_err(|e| anyhow!("Failed to serialize block: {e}"))?;
@@ -146,8 +141,7 @@ impl BlockClient for ServerApi {
         let variables = ShareBlockToSessionVariables {
             block: BlockInput {
                 command: None,
-                embed_display_setting:
-                    warp_graphql::mutations::share_block::DisplaySetting::CommandAndOutput,
+                embed_display_setting: warp_graphql::mutations::share_block::DisplaySetting::CommandAndOutput,
                 output: None,
                 show_prompt: false,
                 stylized_command: None,
@@ -160,7 +154,7 @@ impl BlockClient for ServerApi {
             request_context: get_request_context(),
             shared_session_id: shared_session_id.to_string(),
             serialized_block: serialized_json,
-            block_uuid,
+            block_id: serialized_block.id.as_str().to_string(),
         };
 
         let operation = ShareBlockToSession::build(variables);
