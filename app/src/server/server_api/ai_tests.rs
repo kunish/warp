@@ -5,12 +5,11 @@ use super::super::base_client::CLOUD_AGENT_ID_HEADER;
 use super::super::ServerApi;
 use super::{
     build_fork_conversation_url, build_list_agent_runs_url, build_run_followup_url,
-    AgentMessageHeader, AgentRunClientEventRequest, AgentRunEvent, AgentSource,
-    AmbientAgentTaskState, Artifact, ArtifactDownloadResponse, ArtifactType,
-    ConnectedSelfHostedWorker, ExecutionLocation, ForkConversationResponse,
-    ListConnectedSelfHostedWorkersResponse, ListRunsResponse, ReadAgentMessageResponse,
-    RunFollowupRequest, RunSortBy, RunSortOrder, SpawnAgentRequest, TaskListFilter, UserQueryMode,
-    CONNECTED_SELF_HOSTED_WORKERS_PATH,
+    AgentMessageHeader, AgentRunEvent, AgentSource, AmbientAgentTaskState, Artifact,
+    ArtifactDownloadResponse, ArtifactType, ConnectedSelfHostedWorker, ExecutionLocation,
+    ForkConversationResponse, ListConnectedSelfHostedWorkersResponse, ListRunsResponse,
+    ReadAgentMessageResponse, RunFollowupRequest, RunSortBy, RunSortOrder, SpawnAgentRequest,
+    TaskListFilter, UserQueryMode, CONNECTED_SELF_HOSTED_WORKERS_PATH,
 };
 use crate::notebooks::NotebookId;
 

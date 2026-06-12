@@ -345,7 +345,6 @@ use crate::resource_center::{
 use crate::search::slash_command_menu::static_commands::commands;
 use crate::server::cloud_objects::update_manager::UpdateManager;
 use crate::server::ids::{ObjectUid, SyncId};
-use crate::server::server_api::ai::AIClient;
 use crate::server::server_api::block::BlockClient;
 use crate::server::server_api::ServerApi;
 use crate::server::telemetry::{
