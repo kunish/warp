@@ -436,21 +436,6 @@ impl LaunchMode {
         }
     }
 
-    /// Returns `true` if this process also runs the in-process remote-server
-    /// daemon alongside an agent run (`oz agent run --remote-server-daemon`).
-    fn runs_in_process_remote_server_daemon(&self) -> bool {
-        match self {
-            LaunchMode::CommandLine { command, .. } => match command {
-                CliCommand::Agent(AgentCommand::Run(args)) => args.remote_server_daemon,
-                _ => false,
-            },
-            LaunchMode::App { .. }
-            | LaunchMode::Test { .. }
-            | LaunchMode::RemoteServerProxy
-            | LaunchMode::RemoteServerDaemon { .. } => false,
-        }
-    }
-
     fn execution_mode(&self) -> ExecutionMode {
         match self {
             LaunchMode::App { .. } => ExecutionMode::App,
@@ -1607,12 +1592,7 @@ pub(crate) fn initialize_app(
             });
         }
 
-        // The remote-server daemon (standalone, or in-process via
-        // `oz agent run --remote-server-daemon`) emits incremental repo
-        // metadata updates so connected coding clients receive live file
-        // tree changes.
-        let emit_incremental_updates = matches!(launch_mode, LaunchMode::RemoteServerDaemon { .. })
-            || launch_mode.runs_in_process_remote_server_daemon();
+        let emit_incremental_updates = matches!(launch_mode, LaunchMode::RemoteServerDaemon { .. });
         ctx.add_singleton_model(|ctx| {
             let model = if emit_incremental_updates {
                 RepoMetadataModel::new_with_incremental_updates(ctx)
