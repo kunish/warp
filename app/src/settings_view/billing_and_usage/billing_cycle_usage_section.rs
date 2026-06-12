@@ -52,7 +52,7 @@ pub struct BillingCycleUsageSectionView {
     row_mouse_states: BillingUsageMouseStates,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BillingCycleUsageAction {
     SelectPeriod(Option<DateTime<Utc>>),
     TogglePeriodMenu,
@@ -232,9 +232,24 @@ impl BillingCycleUsageSectionView {
             })
             .collect();
 
+        // `selected_period_end == None` implicitly means the current period
+        // (the first summary), so resolve it to a concrete `period_end` that
+        // matches one of the `SelectPeriod(Some(..))` item actions above.
+        let selected_period_end = self
+            .selected_period_end
+            .or_else(|| data.summaries.first().map(|s| s.period_end));
+
         self.period_menu
             .update(ctx, |menu: &mut Menu<BillingCycleUsageAction>, ctx| {
                 menu.set_items(items, ctx);
+                // Highlight the period currently being displayed so the open
+                // menu reflects the active selection.
+                if let Some(period_end) = selected_period_end {
+                    menu.set_selected_by_action(
+                        &BillingCycleUsageAction::SelectPeriod(Some(period_end)),
+                        ctx,
+                    );
+                }
             });
     }
 }
@@ -811,3 +826,7 @@ fn format_period_range(start: DateTime<Utc>, end: DateTime<Utc>) -> String {
         )
     }
 }
+
+#[cfg(test)]
+#[path = "billing_cycle_usage_section_tests.rs"]
+mod tests;
