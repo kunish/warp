@@ -7,6 +7,7 @@ use lsp::LspManagerModel;
 use repo_metadata::repositories::DetectedRepositories;
 use warp_core::features::FeatureFlag;
 use warp_core::ui::appearance::Appearance;
+use warp_util::content_version::ContentVersion;
 use warp_editor::content::buffer::InitialBufferState;
 use warp_editor::render::element::VerticalExpansionBehavior;
 use warp_editor::render::model::LineCount;
@@ -1069,6 +1070,67 @@ fn test_reuse_file_state_rebuilds_when_deleted_state_toggles() {
                 view.reuse_file_state_if_compatible(prev, &file, view_ctx)
                     .is_none(),
                 "toggling into the deleted state requires the deleted-file editor path"
+            );
+        });
+    });
+}
+
+/// When the editor has unsaved changes, a changed incoming diff must reuse the
+/// editor without re-applying the diff or advancing `file_diff` — otherwise the
+/// user's in-progress edits would be clobbered.
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn test_reuse_file_state_preserves_unsaved_editor_without_clobbering() {
+    App::test((), |mut app| async move {
+        let ctx = TestContext::new(&mut app, "test.txt", "x");
+
+        let prev = take_single_file_state(&mut app, "src/main.rs", "original contents");
+        let old_file_diff = prev.file_diff.clone();
+
+        // The incoming diff differs from the one currently shown.
+        let mut file = modified_file_diff_and_content("src/main.rs", "original contents");
+        file.file_diff.max_line_number = 999;
+        assert_ne!(
+            old_file_diff, file.file_diff,
+            "precondition: the incoming diff must differ from the existing one"
+        );
+
+        ctx.code_review_view.update(&mut app, |view, view_ctx| {
+            // Mark the editor dirty: establish a baseline version, then diverge
+            // from it so `has_unsaved_changes` reports true.
+            let baseline = ContentVersion::new();
+            let edited = ContentVersion::new();
+            prev.editor_state
+                .as_ref()
+                .unwrap()
+                .editor()
+                .update(view_ctx, |editor, ctx| {
+                    editor.reset_with_state(
+                        InitialBufferState::plain_text("original contents").with_version(baseline),
+                        ctx,
+                    );
+                    editor.editor().update(ctx, |code_editor, ctx| {
+                        code_editor.reset(
+                            InitialBufferState::plain_text("unsaved edit").with_version(edited),
+                            ctx,
+                        );
+                    });
+                });
+            assert!(
+                prev.editor_state
+                    .as_ref()
+                    .unwrap()
+                    .has_unsaved_changes(view_ctx),
+                "precondition: the editor must report unsaved changes"
+            );
+
+            let reused = view
+                .reuse_file_state_if_compatible(prev, &file, view_ctx)
+                .expect("an editor with unsaved changes is still reused, not rebuilt");
+            assert_eq!(
+                reused.file_diff, old_file_diff,
+                "unsaved changes must not be clobbered: the stale file_diff is kept \
+                 rather than advancing to the new diff"
             );
         });
     });

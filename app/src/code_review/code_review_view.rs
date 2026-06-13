@@ -2452,6 +2452,9 @@ impl CodeReviewView {
                     self.viewported_list_state.remove(index);
                     let new_states =
                         self.build_view_state_for_file_diffs(std::slice::from_ref(diff), ctx);
+                    for _ in &new_states {
+                        self.viewported_list_state.add_item();
+                    }
                     diff_data.file_states.extend(
                         new_states
                             .into_iter()
@@ -2478,6 +2481,9 @@ impl CodeReviewView {
             (None, Some(diff)) => {
                 let new_states =
                     self.build_view_state_for_file_diffs(std::slice::from_ref(diff.as_ref()), ctx);
+                for _ in &new_states {
+                    self.viewported_list_state.add_item();
+                }
                 diff_data.file_states.extend(
                     new_states
                         .into_iter()
@@ -2585,13 +2591,17 @@ impl CodeReviewView {
                 .swap_remove(&file.file_diff.file_path)
                 .and_then(|prev| self.reuse_file_state_if_compatible(prev, file, ctx));
             match reused {
-                Some(state) => {
-                    self.viewported_list_state.add_item();
-                    file_states_vec.push(state);
-                }
+                Some(state) => file_states_vec.push(state),
                 None => file_states_vec
                     .extend(self.build_view_state_for_file_diffs(std::slice::from_ref(file), ctx)),
             }
+        }
+
+        // Populate the viewported list with one item per file diff. Both the
+        // reuse and rebuild paths feed `file_states_vec`, so list-item accounting
+        // lives here in a single place.
+        for _ in &file_states_vec {
+            self.viewported_list_state.add_item();
         }
 
         // Any states left behind are for files no longer present in the diff;
@@ -2643,7 +2653,10 @@ impl CodeReviewView {
         ctx.notify();
     }
 
-    /// Builds view state for the given file diffs, returning the list of newly created file states.
+    /// Builds view state for the given file diffs, returning the list of newly
+    /// created file states. Does not touch the viewported list; the caller owns
+    /// list-item accounting and must add one item per returned state (see
+    /// `invalidate_all` and `update_from_single_file_diff_result`).
     fn build_view_state_for_file_diffs(
         &self,
         files: &[FileDiffAndContent],
@@ -2777,10 +2790,6 @@ impl CodeReviewView {
             })
         }
 
-        // Populate the viewported list with file diffs
-        for _ in file_states.iter() {
-            self.viewported_list_state.add_item();
-        }
         file_states
     }
 
@@ -2817,7 +2826,7 @@ impl CodeReviewView {
                 .as_ref()
                 .is_some_and(|editor_state| editor_state.has_unsaved_changes(ctx));
             if !has_unsaved_changes {
-                if let (Some(editor_state), Some(repo_path)) =
+                let applied = if let (Some(editor_state), Some(repo_path)) =
                     (prev.editor_state.as_ref(), self.repo_path())
                 {
                     let full_file_location = repo_path.join(&file.file_diff.file_path);
@@ -2830,8 +2839,15 @@ impl CodeReviewView {
                         &comment_line_numbers,
                         ctx,
                     );
+                    true
+                } else {
+                    false
+                };
+                // Only adopt the new diff once it has actually been applied to the
+                // editor, so `file_diff` never gets ahead of the editor's contents.
+                if applied {
+                    prev.file_diff = file.file_diff.clone();
                 }
-                prev.file_diff = file.file_diff.clone();
             }
         }
 
