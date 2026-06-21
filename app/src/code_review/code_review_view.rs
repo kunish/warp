@@ -2666,11 +2666,6 @@ impl CodeReviewView {
             .diff_state_model
             .as_ref(ctx)
             .is_git_operation_blocked(ctx);
-        let discard_tooltip_text = if git_operation_blocked {
-            get_discard_button_disabled_tooltip(git_operation_blocked)
-        } else {
-            "Discard changes".to_string()
-        };
 
         let mut file_states = vec![];
         for file in files {
@@ -2732,25 +2727,11 @@ impl CodeReviewView {
                     })
             });
 
-            let discard_path = file.file_diff.file_path.clone();
-            let discard_tooltip = discard_tooltip_text.clone();
-            let discard_button = ctx.add_typed_action_view(move |ctx| {
-                let mut button = ActionButton::new("", NakedTheme)
-                    .with_icon(Icon::ReverseLeft)
-                    .with_size(ButtonSize::InlineActionHeader)
-                    .with_tooltip(discard_tooltip);
-
-                if git_operation_blocked {
-                    button.set_disabled(true, ctx);
-                } else {
-                    button = button.on_click(move |ctx| {
-                        ctx.dispatch_typed_action(CodeReviewAction::ShowDiscardConfirmDialog(Some(
-                            discard_path.clone(),
-                        )))
-                    });
-                }
-                button
-            });
+            let discard_button = self.build_discard_button(
+                file.file_diff.file_path.clone(),
+                git_operation_blocked,
+                ctx,
+            );
 
             let context_path = file.file_diff.file_path.clone();
             let add_context_button = ctx.add_typed_action_view(move |_ctx| {
@@ -2791,6 +2772,47 @@ impl CodeReviewView {
         }
 
         file_states
+    }
+
+    /// Builds the per-file Discard action button, capturing the current
+    /// `git_operation_blocked` state: disabled with no click handler while a
+    /// git operation is in progress, a live discard dispatch otherwise.
+    ///
+    /// This is rebuilt on every reload — including the editor-reuse path in
+    /// [`Self::reuse_file_state_if_compatible`] — so the button can never go
+    /// stale. The disabled flag and the presence of the click handler are bound
+    /// together at construction (a button built while blocked stores no
+    /// handler), so refreshing in place via `set_disabled` would only be correct
+    /// in one direction; rebuilding re-derives both and is correct whether a
+    /// merge/rebase just started or just finished.
+    fn build_discard_button(
+        &self,
+        file_path: String,
+        git_operation_blocked: bool,
+        ctx: &mut ViewContext<Self>,
+    ) -> ViewHandle<ActionButton> {
+        let discard_tooltip = if git_operation_blocked {
+            get_discard_button_disabled_tooltip(git_operation_blocked)
+        } else {
+            "Discard changes".to_string()
+        };
+        ctx.add_typed_action_view(move |ctx| {
+            let mut button = ActionButton::new("", NakedTheme)
+                .with_icon(Icon::ReverseLeft)
+                .with_size(ButtonSize::InlineActionHeader)
+                .with_tooltip(discard_tooltip);
+
+            if git_operation_blocked {
+                button.set_disabled(true, ctx);
+            } else {
+                button = button.on_click(move |ctx| {
+                    ctx.dispatch_typed_action(CodeReviewAction::ShowDiscardConfirmDialog(Some(
+                        file_path.clone(),
+                    )))
+                });
+            }
+            button
+        })
     }
 
     /// Attempts to reuse an existing file's editor for the incoming diff during a
@@ -2850,6 +2872,21 @@ impl CodeReviewView {
                 }
             }
         }
+
+        // The Discard button captures `git_operation_blocked` at build time, so
+        // the reused button reflects whatever git state existed when this file
+        // was last built — not now. A reload that lands after a merge/rebase
+        // started (or finished) would otherwise keep a stale button: enabled and
+        // able to dispatch a discard while git operations are blocked, or
+        // permanently inert once they unblock. Rebuild it against the current
+        // state. This is a tiny view with no loaded state, so it does not affect
+        // `all_editors_loaded` and never reintroduces the skeleton flash.
+        let git_operation_blocked = self
+            .diff_state_model
+            .as_ref(ctx)
+            .is_git_operation_blocked(ctx);
+        prev.discard_button =
+            self.build_discard_button(file.file_diff.file_path.clone(), git_operation_blocked, ctx);
 
         Some(prev)
     }

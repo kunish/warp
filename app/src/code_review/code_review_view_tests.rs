@@ -1036,6 +1036,34 @@ fn test_reuse_file_state_preserves_loaded_editor_for_unchanged_file() {
     });
 }
 
+/// The per-file Discard button captures `git_operation_blocked` at build time
+/// (disabled with no click handler while blocked, a live discard dispatch
+/// otherwise). Reusing a `FileState` must rebuild that button rather than carry
+/// the stale one, so a reload landing after a merge/rebase started can't leave
+/// an enabled button able to dispatch a discard while git operations are
+/// blocked (nor a permanently inert one once they unblock).
+#[test]
+fn test_reuse_file_state_rebuilds_discard_button() {
+    App::test((), |mut app| async move {
+        let ctx = TestContext::new(&mut app, "test.txt", "line 1\nline 2\nline 3");
+
+        let prev = take_single_file_state(&mut app, "src/main.rs", "line 1\nline 2\nline 3");
+        let original_button = prev.discard_button.clone();
+        let file = modified_file_diff_and_content("src/main.rs", "line 1\nline 2\nline 3");
+
+        ctx.code_review_view.update(&mut app, |view, view_ctx| {
+            let reused = view
+                .reuse_file_state_if_compatible(prev, &file, view_ctx)
+                .expect("an unchanged, non-binary file with an editor should be reused");
+            assert_ne!(
+                reused.discard_button, original_button,
+                "reusing a file state must rebuild the Discard button so it reflects \
+                 the current git-operation-blocked state instead of a stale capture"
+            );
+        });
+    });
+}
+
 #[test]
 fn test_reuse_file_state_rebuilds_when_file_becomes_binary() {
     App::test((), |mut app| async move {
